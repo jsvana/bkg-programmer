@@ -1,4 +1,5 @@
 import { ConnectPanel } from "./ConnectPanel";
+import { RadioIdentityHelp } from "./RadioIdentityHelp";
 import { SelfTestPanel } from "./SelfTestPanel";
 import { BackupPanel } from "./BackupPanel";
 import { WritePanel } from "./WritePanel";
@@ -19,6 +20,7 @@ export default function Home() {
         </p>
       </header>
       <ConnectPanel />
+      <RadioIdentityHelp />
       <SelfTestPanel />
       <WritePanel />
       <BackupPanel />
