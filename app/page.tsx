@@ -3,6 +3,8 @@ import { RadioIdentityHelp } from "./RadioIdentityHelp";
 import { SelfTestPanel } from "./SelfTestPanel";
 import { BackupPanel } from "./BackupPanel";
 import { WritePanel } from "./WritePanel";
+import { SplashTestPanel } from "./SplashTestPanel";
+import { StockFirmwareGuide } from "./StockFirmwareGuide";
 
 export default function Home() {
   return (
@@ -21,9 +23,11 @@ export default function Home() {
       </header>
       <ConnectPanel />
       <RadioIdentityHelp />
+      <StockFirmwareGuide />
       <SelfTestPanel />
       <WritePanel />
       <BackupPanel />
+      <SplashTestPanel />
     </main>
   );
 }

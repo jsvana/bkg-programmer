@@ -60,6 +60,48 @@ a write took.** Map of valid regions in
 `App/driver/eeprom_compat.c:39-72` in the briand fork, summarized in
 `docs/01-protocol.md`.
 
+### K1 DFU mode entry is PTT-only, not PTT+Side1
+
+**UV-K1 Mini Kong: hold PTT alone while powering on.** The classic UV-K5
+sequence (PTT + Side1) is wrong on K1 — Side1 + power-on toggles the
+hidden **350MHz TX** engineering menu instead. Confirmed 2026-05-25 by
+user hardware test; the wrong combo produced "350TX ON" rather than
+entering DFU. The toggle is reversible by repeating the same combo
+(state flips each time). Don't push the K5 convention onto K1 in copy
+users will follow.
+
+Source: empirical (no official docs). UVTools2 and briand/armel READMEs
+all say "put radio in DFU mode" without specifying the K1 combo.
+
+### Stock K1 has read-mapped, write-protected regions
+
+Distinct from "unmapped" above: stock K1 v7.03.01 maps `0x2E00`
+(boot logo), `0x3000` (byte-identical mirror of `0x2E00`), and
+`0x3200` (aux bitmap) for **reads** — they return real bitmap data,
+not `0xFF`. But the standard `0x051D` WRITE_EEPROM command to those
+addresses is **silently dropped: no reply at all**, not even an
+error frame. Confirmed 2026-05-25 for both `0x2E00` and `0x3000` by
+10s timeout + diagnostic read showing original bytes still in place.
+`0x3200` aux bitmap assumed same protection (untested, low priority
+since the splash question is already settled).
+
+Implication: **you cannot program the splash on stock K1 via the
+standard write opcode.** Two known paths around this:
+
+1. **Quansheng's authentic-only opcodes `0x051F` and `0x0521`** — every
+   open-source firmware port (DualTachyon `App/app/uart.c:505-511`,
+   armel/briand/uvk5cec) explicitly stubs these as `// Not implementing
+   non-authentic command`. They are almost certainly the path the
+   official Quansheng programmer uses to write protected regions.
+   Reverse-engineering them requires capturing USB serial traffic from
+   the official tool against a real radio.
+2. **Custom firmware (F4HWN, briand, egzumer)** typically remaps these
+   regions for writes. UVTools2 flashes the firmware; we don't.
+
+Bumping the timeout doesn't help — the radio never responds. Use a
+10s timeout on writes to suspected-flash regions anyway in case the
+sector erase is slow on regions that *are* writable.
+
 ### V3/K1 channel attributes are cached in RAM
 
 The firmware keeps active channel attrs in a small cache (`misc.h:256-263`
@@ -188,7 +230,13 @@ Don't guess at them; capture from real radios.
      unmapped. Menu caps at 200 channels (despite "1024 channels" marketing,
      which appears to require custom firmware).
      Extras beyond V1: boot logo at 0x2E00 (stored twice, byte-identical
-     copies at 0x2E00 and 0x3000); aux bitmap at 0x3200.
+     copies at 0x2E00 and 0x3000, both 512 bytes, 128×32 packed-page
+     1-bpp bitmap); aux bitmap at 0x3200 (also 128×32, different image).
+     **All three are read-mapped but write-protected on stock** — the
+     standard 0x051D write opcode returns no reply at all (10s timeout
+     confirmed for 0x2E00). See "Stock K1 has read-mapped, write-protected
+     regions" above. The splash cannot be reprogrammed via this protocol
+     on stock firmware.
      Model string "UV-K1" is at **0x0EC0** on stock K1, not 0x1ED0 like V1.
      Default passwords "77777"/"88888" at 0x0EE8/0x0EF0.
    - **Stock UV-K5 V1/V2**, **egzumer**, **F4HWN-on-K5-V1**, **F4HWN-NR7Y**:

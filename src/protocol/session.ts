@@ -62,21 +62,28 @@ export class Session {
   /**
    * Write EEPROM. `data.length` must be a multiple of 8.
    * Splits writes larger than 248 bytes into multiple commands.
+   *
+   * `timeoutMs` controls the per-chunk reply timeout. Defaults to the
+   * transport's default. Writes that land in flash-backed regions (e.g.
+   * V3/K1 splash at 0x2E00) may require a sector erase and take seconds
+   * to ack — bump this to 8000+ for those regions.
    */
   async writeEeprom(
     address: number,
     data: Uint8Array,
-    opts: WriteOpts = {},
+    opts: WriteOpts & { timeoutMs?: number } = {},
   ): Promise<void> {
     if (data.length % 8 !== 0) {
       throw new Error(`write size must be multiple of 8: ${data.length}`);
     }
+    const { timeoutMs, ...wireOpts } = opts;
     let offset = 0;
     while (offset < data.length) {
       const chunkSize = Math.min(0xF8, data.length - offset); // 248, multiple of 8
       const chunk = data.subarray(offset, offset + chunkSize);
       const frame = await this.transport.request(
-        buildWriteEeprom(address + offset, chunk, this.timestamp, opts),
+        buildWriteEeprom(address + offset, chunk, this.timestamp, wireOpts),
+        timeoutMs,
       );
       if (frame.cmd !== CMD.WRITE_EEPROM_REPLY) {
         throw new Error(
