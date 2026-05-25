@@ -3,6 +3,7 @@ import { RadioIdentityHelp } from "./RadioIdentityHelp";
 import { SelfTestPanel } from "./SelfTestPanel";
 import { BackupPanel } from "./BackupPanel";
 import { WritePanel } from "./WritePanel";
+import { ConfigPanel } from "./ConfigPanel";
 import { SplashTestPanel } from "./SplashTestPanel";
 import { StockFirmwareGuide } from "./StockFirmwareGuide";
 
@@ -26,6 +27,7 @@ export default function Home() {
       <StockFirmwareGuide />
       <SelfTestPanel />
       <WritePanel />
+      <ConfigPanel />
       <BackupPanel />
       <SplashTestPanel />
     </main>

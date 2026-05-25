@@ -1,0 +1,14 @@
+{
+  "$schema": "https://bkg.club/schemas/config-v1.json",
+  "schemaVersion": 1,
+  "name": "Example: IJV rename channels",
+  "notes": "On IJV the channel record and ijv_settings block are still read-only (waiting on persistence self-test). Channel names ARE writable — that's the slot most empirically verified on this firmware ('4cB01' rename, 2026-05-25). Anything more than this errors with 'readonly-module' on IJV today.",
+  "appliesTo": {
+    "profileIds": ["uv-k5-ijv"]
+  },
+  "channels": [
+    { "index": 1, "name": "146P940" },
+    { "index": 2, "name": "147P060" },
+    { "index": 3, "name": "146P520" }
+  ]
+}

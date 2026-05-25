@@ -1,0 +1,64 @@
+{
+  "$schema": "https://bkg.club/schemas/config-v1.json",
+  "schemaVersion": 1,
+  "name": "Example: Bay Area 2m repeaters",
+  "notes": "Sparse overlay. Touches channels 1-3 plus a couple of F4HWN preferences. Channel indices are 1-based (matching the radio menu). Frequencies accept Hz numbers, MHz numbers under 10000, or strings like '146.94 MHz'.",
+  "appliesTo": {
+    "profileIds": ["uv-k1-f4hwn-nr7y"]
+  },
+  "channels": [
+    {
+      "index": 1,
+      "name": "MARIN",
+      "fields": {
+        "rx_freq": "146.94 MHz",
+        "tx_offset_freq": 600000,
+        "tx_offset_dir": "-",
+        "rx_code_type": "CTCSS",
+        "tx_code_type": "CTCSS",
+        "rx_code": 12,
+        "tx_code": 12,
+        "modulation": "FM",
+        "bandwidth": "Wide (25 kHz)",
+        "tx_power": "Mid"
+      }
+    },
+    {
+      "index": 2,
+      "name": "MTDIABLO",
+      "fields": {
+        "rx_freq": "147.06 MHz",
+        "tx_offset_freq": 600000,
+        "tx_offset_dir": "+",
+        "rx_code_type": "Off",
+        "tx_code_type": "CTCSS",
+        "tx_code": 8,
+        "modulation": "FM",
+        "bandwidth": "Wide (25 kHz)",
+        "tx_power": "High"
+      }
+    },
+    {
+      "index": 3,
+      "name": "SIMPLEX",
+      "fields": {
+        "rx_freq": "146.52 MHz",
+        "tx_offset_freq": 0,
+        "tx_offset_dir": "Off (simplex)",
+        "rx_code_type": "Off",
+        "tx_code_type": "Off",
+        "modulation": "FM",
+        "bandwidth": "Narrow (12.5 kHz)",
+        "tx_power": "Low"
+      }
+    }
+  ],
+  "settings": {
+    "f4hwn_settings": {
+      "set_pwr": "Mid (~2 W)",
+      "set_eot": "Roger",
+      "set_ptt": "Classic (hold)",
+      "set_tot": "Sound"
+    }
+  }
+}
