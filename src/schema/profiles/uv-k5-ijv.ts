@@ -99,9 +99,18 @@ const ijvSettings: BlockModuleDef = {
  *   - V4          — K1 / K5v3 only                  (NOT matched here;
  *                   different hardware family, needs its own profile)
  *
- * Profile is **read-only end-to-end**. No writes until a self-test
- * confirms persistence and we have a citable settings layout. See
- * CLAUDE.md's "How to debug a verify mismatch" and Open Question
+ * Write policy (as of 2026-05-25):
+ *   - `channel_names` is **write-enabled** so the self-test can run.
+ *     The slot at 0x0F50 + (N-1)*16 was the single most empirically
+ *     verified address we have for IJV — the "4cB01" rename diff
+ *     proved both the address and the encoding match stock V1.
+ *     Persistence across reboot is still TBD; that's exactly what
+ *     the self-test is meant to determine.
+ *   - Everything else is still read-only until self-test passes.
+ *     boot_line_1 / boot_line_2 in ijv_settings, the channels and
+ *     scratch_channels arrays, and the probe block remain locked.
+ *
+ * See CLAUDE.md's "How to debug a verify mismatch" and Open Question
  * #1 for the persistence/cache caveat.
  *
  * Verified shared with stock K5 V1 (DualTachyon upstream):
@@ -174,7 +183,9 @@ export const uvK5Ijv: Profile = {
       count: 200,
       stride: 16,
       template: channelName,
-      readOnly: true,
+      // Write-enabled — channel-name layout is the most empirically
+      // verified address on IJV (see "4cB01" diff in module JSDoc).
+      // Persistence across reboot is what the self-test validates.
     },
     { binding: { moduleId: 'calibration', baseOffset: 0x1E00 } },
     { binding: { moduleId: 'ijv_settings', baseOffset: 0x0E30 } },
