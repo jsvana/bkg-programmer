@@ -156,7 +156,11 @@ export const uvK5Ijv: Profile = {
     firmwareFamily: 'ijv',
     versionRange: '2.9|3.60',
   },
-  eepromSize: 0x2000,
+  // Stock K5 V1 caps at 0x2000 (8 KB). We extend to 0x2100 to make room
+  // for the address-space-probe block below. If reading past 0x2000 errors
+  // or returns all-0xFF, IJV doesn't extend the EEPROM and we'll trim
+  // this back. If we see real bytes, follow-up probes can keep expanding.
+  eepromSize: 0x2100,
   modules: [
     {
       kind: 'array',
@@ -205,6 +209,14 @@ export const uvK5Ijv: Profile = {
     // Remaining unmapped window between channel_names and calibration.
     // Likely DTMF, FM presets, scanlist edges — yet to be mapped.
     probeBlock('probe_post_names', 0x1BD0, 0x0230),
+    // Past-stock-cap probe. Stock K5 V1 EEPROM ends at 0x2000. If IJV
+    // extends the address space (the way F4HWN does on V3/K1 via
+    // eeprom_compat.c remapping), there'll be real bytes here — and
+    // it's the most likely place to find the "IJV MOD" splash text
+    // or other IJV-specific config that doesn't live in stock
+    // territory. 256-byte window is small enough that a read failure
+    // aborts the backup cheaply; expand once we know it's safe.
+    probeBlock('probe_above_stock_cap', 0x2000, 0x0100),
   ],
   notes:
     'IJV is closed-source. Profile covers the layout IJV provably ' +
