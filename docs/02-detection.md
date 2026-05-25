@@ -58,15 +58,61 @@ highlighting distinguishing features (USB-C location, antenna connector,
 side button shape). User picks. If their pick contradicts Stages 1-2,
 refuse to flash.
 
-## Confidence levels and what they gate
+## Confidence: three independent axes
 
-| Confidence | UI behavior | Flash gate |
+A single confidence value used to collapse three different judgments
+into one. That made the "conflict" state overloaded — it meant
+"firmware fingerprint and EEPROM disagree about the hardware," but
+also implicitly meant "refuse to flash." The split below separates
+each judgment, so the UI can show what is and isn't known, and
+flashing is gated by an explicit derived rule rather than a side
+effect of one enum value.
+
+### Axis 1: Radio identity
+
+What hardware are we talking to?
+
+| State | Meaning | Source |
 | --- | --- | --- |
-| `high` | Auto-proceed, model shown in corner | ✅ allowed |
-| `medium` | Confirm model, default pre-selected | ✅ allowed |
-| `low` | Full picker, no default | ⚠️  warn |
-| `conflict` | Show conflict, explain | ❌ blocked |
-| `unusable` | Troubleshooting flow | ❌ blocked |
+| `confirmed` | Hello + EEPROM model bytes agree | Stages 1 + 3 |
+| `inferred` | One candidate from hello; no EEPROM cross-check available | Stage 1, narrowed |
+| `ambiguous` | Multiple candidates from hello, none resolved | Stage 1 only |
+| `conflict` | Firmware fingerprint and model bytes contradict | Stages 1 + 3 disagree |
+| `unknown` | No firmware match, so no candidates | Stage 2 unknown |
+
+### Axis 2: Firmware identity
+
+What firmware is on it?
+
+| State | Meaning |
+| --- | --- |
+| `matched` | Version string matched a registry entry |
+| `unknown` | No regex in the registry matched |
+
+### Axis 3: Programmability
+
+Can we safely write to this radio? Derived from the first two plus
+the per-firmware self-test result (`docs/09-self-test.md`).
+
+| State | Meaning | Trust mode |
+| --- | --- | --- |
+| `verified` | Profile exists and self-test passed | `trustReadback: yes` |
+| `verified-with-reboot` | Profile exists; self-test requires reboot to confirm persistence | `trustReadback: with-reboot-verify` |
+| `provisional` | Profile exists but self-test hasn't run (or failed) | unknown |
+| `unsupported` | No profile, or firmware unknown | — |
+| `blocked` | Radio identity conflict, or radio in DFU | — |
+
+### Combined flash-gate matrix
+
+`canFlash()` is the single source of truth. It looks only at axis 3:
+
+| Programmability | Flash allowed? |
+| --- | --- |
+| `verified` | ✅ allowed |
+| `verified-with-reboot` | ✅ allowed |
+| `provisional` | ⚠️  blocked by default; UI may offer override |
+| `unsupported` | ❌ blocked |
+| `blocked` | ❌ blocked |
 
 ## Pitfalls
 

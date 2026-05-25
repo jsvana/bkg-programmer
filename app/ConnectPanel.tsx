@@ -2,7 +2,12 @@
 
 import { useSession } from "./SessionContext";
 import type { ConnState } from "./SessionContext";
-import type { DetectionResult } from "../src/detection/detect";
+import type {
+  DetectionResult,
+  RadioIdentity,
+  FirmwareIdentity,
+  Programmability,
+} from "../src/detection/detect";
 
 export function ConnectPanel() {
   const { state, connect, disconnect } = useSession();
@@ -79,29 +84,20 @@ function ConnectedView({
   result: DetectionResult;
   onDisconnect: () => void;
 }) {
-  const { hello, firmware, confidence, candidateModels, modelBytesString, notes } =
-    result;
+  const { hello, radio, firmware, programmability, modelBytesString, notes } = result;
   return (
     <div style={{ marginTop: 12 }}>
       <Row label="Firmware version">
         <code>{hello.versionString || "(empty)"}</code>
       </Row>
-      <Row label="Confidence">
-        <ConfidenceBadge confidence={confidence} />
+      <Row label="Radio">
+        <RadioBadge radio={radio} />
       </Row>
-      {firmware ? (
-        <Row label="Profile">
-          <code>{firmware.profileId}</code>
-        </Row>
-      ) : null}
-      <Row label="Candidate models">
-        {candidateModels.length ? (
-          candidateModels.map((m) => (
-            <code key={m} style={{ marginRight: 8 }}>{m}</code>
-          ))
-        ) : (
-          <span style={{ color: "var(--muted)" }}>(none)</span>
-        )}
+      <Row label="Firmware">
+        <FirmwareBadge firmware={firmware} />
+      </Row>
+      <Row label="Programmability">
+        <ProgrammabilityBadge programmability={programmability} />
       </Row>
       {modelBytesString !== undefined ? (
         <Row label="Model bytes">
@@ -151,35 +147,132 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function ConfidenceBadge({
-  confidence,
+// ============ Badges ============
+
+const GREEN = "#2e7d32";
+const AMBER = "#b88a00";
+const GREY = "#888";
+const RED = "#c0392b";
+
+function Badge({
+  color,
+  label,
+  detail,
 }: {
-  confidence: DetectionResult["confidence"];
+  color: string;
+  label: string;
+  detail?: string;
 }) {
-  const color =
-    confidence === "high"
-      ? "#2e7d32"
-      : confidence === "medium"
-        ? "#b88a00"
-        : confidence === "low"
-          ? "#888"
-          : confidence === "conflict"
-            ? "#c0392b"
-            : "#777";
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: 4,
-        background: color,
-        color: "white",
-        fontSize: 12,
-        textTransform: "uppercase",
-        letterSpacing: 0.4,
-      }}
-    >
-      {confidence}
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8 }}>
+      <span
+        style={{
+          display: "inline-block",
+          padding: "2px 8px",
+          borderRadius: 4,
+          background: color,
+          color: "white",
+          fontSize: 12,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+        }}
+      >
+        {label}
+      </span>
+      {detail ? (
+        <span style={{ fontSize: 13, color: "var(--muted)" }}>{detail}</span>
+      ) : null}
     </span>
   );
+}
+
+function RadioBadge({ radio }: { radio: RadioIdentity }) {
+  switch (radio.kind) {
+    case "confirmed":
+      return <Badge color={GREEN} label="confirmed" detail={radio.models.join(", ")} />;
+    case "inferred":
+      return <Badge color={AMBER} label="inferred" detail={radio.models.join(", ")} />;
+    case "ambiguous":
+      return (
+        <Badge color={AMBER} label="ambiguous" detail={radio.models.join(" / ")} />
+      );
+    case "conflict":
+      return (
+        <Badge
+          color={RED}
+          label="conflict"
+          detail={`firmware says ${radio.firmwareCandidates.join("/")}; EEPROM says "${radio.modelBytesSays}"`}
+        />
+      );
+    case "unknown":
+      return <Badge color={GREY} label="unknown" />;
+  }
+}
+
+function FirmwareBadge({ firmware }: { firmware: FirmwareIdentity }) {
+  switch (firmware.kind) {
+    case "matched":
+      return (
+        <Badge
+          color={GREEN}
+          label="matched"
+          detail={`${firmware.entry.displayName} → ${firmware.entry.profileId}`}
+        />
+      );
+    case "unknown":
+      return (
+        <Badge color={GREY} label="unknown" detail={firmware.versionString || "(empty)"} />
+      );
+  }
+}
+
+function ProgrammabilityBadge({
+  programmability,
+}: {
+  programmability: Programmability;
+}) {
+  switch (programmability.kind) {
+    case "verified":
+      return <Badge color={GREEN} label="verified" detail="self-test passed" />;
+    case "verified-with-reboot":
+      return (
+        <Badge color={GREEN} label="verified" detail="readback after reboot" />
+      );
+    case "provisional":
+      return (
+        <Badge
+          color={AMBER}
+          label="provisional"
+          detail={
+            programmability.reason === "self-test-not-run"
+              ? "self-test not yet run"
+              : "self-test failed"
+          }
+        />
+      );
+    case "unsupported":
+      return (
+        <Badge
+          color={GREY}
+          label="unsupported"
+          detail={
+            programmability.reason === "firmware-unknown"
+              ? "unknown firmware"
+              : "no profile registered"
+          }
+        />
+      );
+    case "blocked":
+      return (
+        <Badge
+          color={RED}
+          label="blocked"
+          detail={
+            programmability.reason === "radio-identity-conflict"
+              ? "radio identity conflict"
+              : "radio in DFU mode"
+          }
+        />
+      );
+  }
 }

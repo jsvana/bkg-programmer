@@ -24,7 +24,9 @@ export function WritePanel() {
   if (state.kind !== "connected") return null;
 
   const profileId =
-    state.result.suggestedProfileId ?? state.result.firmware?.profileId;
+    state.result.firmware.kind === "matched"
+      ? state.result.firmware.entry.profileId
+      : undefined;
   if (!profileId) return null;
   const profile = findProfile(profileId);
   const resolved = resolveProfileById(profileId);

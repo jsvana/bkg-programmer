@@ -24,7 +24,10 @@ export function SelfTestPanel() {
   const { state } = useSession();
 
   if (state.kind !== "connected") return null;
-  const profileId = state.result.suggestedProfileId ?? state.result.firmware?.profileId;
+  const profileId =
+    state.result.firmware.kind === "matched"
+      ? state.result.firmware.entry.profileId
+      : undefined;
   if (!profileId) {
     return (
       <Section>
@@ -58,7 +61,10 @@ export function SelfTestPanel() {
       </Section>
     );
   }
-  const radioModel = state.result.candidateModels[0] ?? ("uv-k5-v1" as RadioModelId);
+  const radioModel: RadioModelId =
+    state.result.firmware.kind === "matched"
+      ? (state.result.firmware.entry.candidateModels[0] ?? "uv-k5-v1")
+      : "uv-k5-v1";
   return (
     <SelfTestForm
       profileId={profileId}

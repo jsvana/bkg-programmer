@@ -1,23 +1,66 @@
 /**
- * Three-stage detection. See docs/02-detection.md.
+ * Three-axis detection. See docs/02-detection.md.
+ *
+ * The result splits into three independent judgments:
+ *   - radio:           what hardware are we talking to?
+ *   - firmware:        what firmware is on it?
+ *   - programmability: can we safely write to it?
+ *
+ * They are computed independently and combined by `canFlash()`.
  */
 
 import type { Session } from '../protocol/session';
 import type { RadioModelId, ProfileId } from '../schema/types';
 import { findFirmwareByVersion, type FirmwareEntry } from './registry';
+import { lookupSelfTest } from './selfTestResults';
 import type { HelloReply } from '../protocol/commands';
 
-export type Confidence = 'high' | 'medium' | 'low' | 'conflict' | 'unusable';
+// ============ Radio identity ============
+
+export type RadioIdentity =
+  | { kind: 'confirmed'; models: ReadonlyArray<RadioModelId>; via: 'model-bytes' }
+  | { kind: 'inferred'; models: ReadonlyArray<RadioModelId>; via: 'firmware-fingerprint' }
+  | { kind: 'ambiguous'; models: ReadonlyArray<RadioModelId> }
+  | {
+      kind: 'conflict';
+      firmwareCandidates: ReadonlyArray<RadioModelId>;
+      modelBytesSays: string;
+    }
+  | { kind: 'unknown' };
+
+// ============ Firmware identity ============
+
+export type FirmwareIdentity =
+  | { kind: 'matched'; entry: FirmwareEntry }
+  | { kind: 'unknown'; versionString: string };
+
+// ============ Programmability ============
+
+export type Programmability =
+  | { kind: 'verified'; profileId: ProfileId; trustReadback: 'yes' }
+  | {
+      kind: 'verified-with-reboot';
+      profileId: ProfileId;
+      trustReadback: 'with-reboot-verify';
+    }
+  | {
+      kind: 'provisional';
+      profileId: ProfileId;
+      reason: 'self-test-not-run' | 'self-test-failed';
+    }
+  | { kind: 'unsupported'; reason: 'no-profile' | 'firmware-unknown' }
+  | { kind: 'blocked'; reason: 'radio-identity-conflict' | 'dfu-mode' };
+
+// ============ Combined result ============
 
 export interface DetectionResult {
-  confidence: Confidence;
   hello: HelloReply;
-  firmware?: FirmwareEntry | undefined;
-  candidateModels: ReadonlyArray<RadioModelId>;
-  modelBytesString?: string | undefined;       // raw ASCII from 0x1ED0 region
+  radio: RadioIdentity;
+  firmware: FirmwareIdentity;
+  programmability: Programmability;
+  /** Raw ASCII from the model-bytes region, if it was read. */
+  modelBytesString?: string;
   notes: ReadonlyArray<string>;
-  /** Suggested profile, if confidence is at least medium. */
-  suggestedProfileId?: ProfileId | undefined;
 }
 
 /**
@@ -27,58 +70,210 @@ export interface DetectionResult {
 export async function detect(session: Session): Promise<DetectionResult> {
   const notes: string[] = [];
 
-  // Stage 2: fingerprint version string
-  const firmware = findFirmwareByVersion(session.hello.versionString);
-  if (!firmware) {
+  // --- Firmware identity (Stage 2) ---
+  const firmwareEntry = findFirmwareByVersion(session.hello.versionString);
+  const firmware: FirmwareIdentity = firmwareEntry
+    ? { kind: 'matched', entry: firmwareEntry }
+    : { kind: 'unknown', versionString: session.hello.versionString };
+
+  if (!firmwareEntry) {
     notes.push(`Unknown firmware version string: "${session.hello.versionString}"`);
+  }
+
+  // --- Radio identity (Stage 3) ---
+  const { radio, modelBytesString } = await resolveRadioIdentity(
+    session,
+    firmwareEntry,
+    notes,
+  );
+
+  // --- Programmability (derived) ---
+  const programmability = resolveProgrammability(
+    radio,
+    firmware,
+    session.hello.versionString,
+  );
+
+  const result: DetectionResult = {
+    hello: session.hello,
+    radio,
+    firmware,
+    programmability,
+    notes,
+  };
+  if (modelBytesString !== undefined) {
+    result.modelBytesString = modelBytesString;
+  }
+  return result;
+}
+
+async function resolveRadioIdentity(
+  session: Session,
+  firmwareEntry: FirmwareEntry | undefined,
+  notes: string[],
+): Promise<{ radio: RadioIdentity; modelBytesString?: string }> {
+  if (!firmwareEntry) {
+    return { radio: { kind: 'unknown' } };
+  }
+
+  const candidates = firmwareEntry.candidateModels;
+
+  if (!firmwareEntry.modelBytesPreserved) {
+    // Can't cross-check; trust the firmware fingerprint alone.
     return {
-      confidence: 'low',
-      hello: session.hello,
-      candidateModels: [],
-      notes,
+      radio:
+        candidates.length === 1
+          ? { kind: 'inferred', models: candidates, via: 'firmware-fingerprint' }
+          : { kind: 'ambiguous', models: candidates },
     };
   }
 
-  // Stage 3: cross-check model bytes from EEPROM
-  // V1 model bytes are at 0x1ED0; stock K1 at 0x0EC0. Other locations TBD.
-  // The firmware entry's modelBytesAddress tells us where to look.
+  const modelBytesAddress = firmwareEntry.modelBytesAddress ?? 0x1ED0;
   let modelBytesString: string | undefined;
-  let confidence: Confidence = 'medium';
-  const modelBytesAddress = firmware.modelBytesAddress ?? 0x1ED0;
-  if (firmware.modelBytesPreserved) {
-    try {
-      const bytes = await session.readEeprom(modelBytesAddress, 16);
-      modelBytesString = decodeModelBytes(bytes);
-      const matched = modelBytesMatchCandidate(modelBytesString, firmware.candidateModels);
-      if (matched === 'match') {
-        confidence = 'high';
-        notes.push(
-          `Model bytes at 0x${modelBytesAddress.toString(16).toUpperCase()} confirm: ${modelBytesString}`,
-        );
-      } else if (matched === 'conflict') {
-        confidence = 'conflict';
-        notes.push(
-          `Model bytes "${modelBytesString}" contradict firmware fingerprint. Refusing to flash.`,
-        );
-      } else {
-        notes.push(
-          `Model bytes "${modelBytesString}" inconclusive; staying at medium confidence.`,
-        );
-      }
-    } catch (err) {
-      notes.push(`Could not read model bytes: ${(err as Error).message}`);
-    }
+  try {
+    const bytes = await session.readEeprom(modelBytesAddress, 16);
+    modelBytesString = decodeModelBytes(bytes);
+  } catch (err) {
+    notes.push(`Could not read model bytes: ${(err as Error).message}`);
+    return {
+      radio:
+        candidates.length === 1
+          ? { kind: 'inferred', models: candidates, via: 'firmware-fingerprint' }
+          : { kind: 'ambiguous', models: candidates },
+    };
   }
 
+  const matched = modelBytesMatchCandidate(modelBytesString, candidates);
+  if (matched === 'match') {
+    notes.push(
+      `Model bytes at 0x${modelBytesAddress.toString(16).toUpperCase()} confirm: ${modelBytesString}`,
+    );
+    return {
+      radio: { kind: 'confirmed', models: candidates, via: 'model-bytes' },
+      modelBytesString,
+    };
+  }
+  if (matched === 'conflict') {
+    notes.push(
+      `Model bytes "${modelBytesString}" contradict firmware fingerprint. Refusing to flash.`,
+    );
+    return {
+      radio: {
+        kind: 'conflict',
+        firmwareCandidates: candidates,
+        modelBytesSays: modelBytesString,
+      },
+      modelBytesString,
+    };
+  }
+
+  notes.push(
+    `Model bytes "${modelBytesString}" inconclusive; relying on firmware fingerprint.`,
+  );
   return {
-    confidence,
-    hello: session.hello,
-    firmware,
-    candidateModels: firmware.candidateModels,
+    radio:
+      candidates.length === 1
+        ? { kind: 'inferred', models: candidates, via: 'firmware-fingerprint' }
+        : { kind: 'ambiguous', models: candidates },
     modelBytesString,
-    notes,
-    suggestedProfileId: confidence === 'conflict' ? undefined : firmware.profileId,
   };
+}
+
+function resolveProgrammability(
+  radio: RadioIdentity,
+  firmware: FirmwareIdentity,
+  versionString: string,
+): Programmability {
+  if (radio.kind === 'conflict') {
+    return { kind: 'blocked', reason: 'radio-identity-conflict' };
+  }
+  if (firmware.kind === 'unknown') {
+    return { kind: 'unsupported', reason: 'firmware-unknown' };
+  }
+  const { entry } = firmware;
+  if (!entry.profileId) {
+    return { kind: 'unsupported', reason: 'no-profile' };
+  }
+
+  // Within a single firmware build the protocol implementation is
+  // identical across hardware revisions of the same MCU family, so a
+  // self-test verdict for any candidate model is reasonable evidence
+  // for all of them. First match wins.
+  const candidates =
+    radio.kind === 'confirmed' ||
+    radio.kind === 'inferred' ||
+    radio.kind === 'ambiguous'
+      ? radio.models
+      : entry.candidateModels;
+
+  let verdict;
+  for (const model of candidates) {
+    verdict = lookupSelfTest(model, versionString);
+    if (verdict) break;
+  }
+
+  if (!verdict) {
+    return {
+      kind: 'provisional',
+      profileId: entry.profileId,
+      reason: 'self-test-not-run',
+    };
+  }
+  if (verdict.trustReadback === 'yes') {
+    return { kind: 'verified', profileId: entry.profileId, trustReadback: 'yes' };
+  }
+  if (verdict.trustReadback === 'with-reboot-verify') {
+    return {
+      kind: 'verified-with-reboot',
+      profileId: entry.profileId,
+      trustReadback: 'with-reboot-verify',
+    };
+  }
+  return {
+    kind: 'provisional',
+    profileId: entry.profileId,
+    reason: 'self-test-failed',
+  };
+}
+
+/**
+ * Whether write operations should be permitted. The UI may still offer
+ * an override for `provisional`; `blocked` and `unsupported` are hard
+ * stops.
+ */
+export function canFlash(
+  r: DetectionResult,
+): { allowed: boolean; reason?: string } {
+  const p = r.programmability;
+  switch (p.kind) {
+    case 'verified':
+    case 'verified-with-reboot':
+      return { allowed: true };
+    case 'provisional':
+      return {
+        allowed: false,
+        reason:
+          p.reason === 'self-test-not-run'
+            ? 'Self-test has not been run for this firmware version.'
+            : 'Self-test failed for this firmware version.',
+      };
+    case 'unsupported':
+      return {
+        allowed: false,
+        reason:
+          p.reason === 'firmware-unknown'
+            ? 'Firmware version is not recognized.'
+            : 'No profile is registered for this firmware.',
+      };
+    case 'blocked':
+      return {
+        allowed: false,
+        reason:
+          p.reason === 'radio-identity-conflict'
+            ? 'Firmware fingerprint and EEPROM model bytes disagree.'
+            : 'Radio is in DFU/bootloader mode.',
+      };
+  }
 }
 
 function decodeModelBytes(bytes: Uint8Array): string {
