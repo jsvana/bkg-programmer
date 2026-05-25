@@ -125,9 +125,17 @@ const ijvSettings: BlockModuleDef = {
  *     `34 63 42 30 31 00 …` (10-char + 6 null pad) at backup region
  *     offset 0x0F50+0. Next slot at +0x10 reads "CH002\0…". IJV uses
  *     the V1 channel-name layout unchanged.
- *   - scratch_channels at 0x0C80, 14 × 16 bytes — VFO/scratch slot
- *     table, same channelRecordIjv shape as the main array. Inferred
- *     from the TX-power capture landing in slot 5 (`abs 0x0CDC`).
+ *   - scratch_channels at 0x0C80, 14 × 16 bytes — band-VFO working
+ *     copies (likely 7 bands × A/B = 14 slots). Same channelRecordIjv
+ *     shape as the main array. The TX-power knob writes to whichever
+ *     slot corresponds to the currently-active band's VFO; the 3-state
+ *     capture on 2026-05-25 hit slot 5 because channel 1 (144.025 MHz,
+ *     2m) was active at the time, so slot 5 held the live mirror of
+ *     channel 1's record.
+ *   - channels_mirror at 0x2000, 0x110 bytes — byte-for-byte duplicate
+ *     of channels[0..16]. Past 0x2110 is all-0xFF (verified by 8 KB
+ *     probe). IJV does NOT extend EEPROM in any meaningful sense; this
+ *     mirror is the entirety of the past-stock-cap mapped region.
  *   - calibration at 0x1E00, 512 bytes (V1 base; layout shared with
  *     V3/K1 per egzumer/settings.c:282-324)
  *   - ijv_settings at 0x0E30, 288 bytes — block contains squelch_level
@@ -156,12 +164,11 @@ export const uvK5Ijv: Profile = {
     firmwareFamily: 'ijv',
     versionRange: '2.9|3.60',
   },
-  // IJV extends EEPROM past stock K5 V1's 0x2000 cap. First probe at
-  // 0x2000–0x2100 came back 100% populated with structured channel-shaped
-  // records (verified 2026-05-25). Expanding the probe to 0x4000 to find
-  // where the IJV-mapped region ends. Reads chunk at 0x80 (128 B), so
-  // an 8 KB probe adds ~3–4 seconds to a full backup.
-  eepromSize: 0x4000,
+  // IJV maps a 272-byte mirror of channels[0..16] at 0x2000–0x2110;
+  // past 0x2110 is all-0xFF (unmapped). The mirror appears to be a
+  // redundancy scheme — same pattern stock K1 uses for its dual-buffer
+  // boot logo. No other "extended" EEPROM territory exists.
+  eepromSize: 0x2110,
   modules: [
     {
       kind: 'array',
@@ -210,17 +217,18 @@ export const uvK5Ijv: Profile = {
     // Remaining unmapped window between channel_names and calibration.
     // Likely DTMF, FM presets, scanlist edges — yet to be mapped.
     probeBlock('probe_post_names', 0x1BD0, 0x0230),
-    // Past-stock-cap probe. Stock K5 V1 EEPROM ends at 0x2000. IJV
-    // demonstrably extends the address space (verified by the first
-    // 0x100 probe coming back 100% populated with channel-shaped
-    // records on 2026-05-25). Expanded to 0x2000 bytes so we can see
-    // where the IJV-mapped region actually ends — backup will fail
-    // (or return long runs of 0xFF) at the boundary.
+    // Byte-for-byte mirror of channels[0..16] (272 bytes). Verified
+    // 2026-05-25 by 8 KB probe: 0x2000-0x2110 exactly equals
+    // 0x0000-0x0110, and 0x2110+ is all-0xFF. Likely a redundancy /
+    // wear-leveling scheme similar to stock K1's dual-buffer boot
+    // logo. Read-only — writes here would diverge from the primary
+    // channels array until something causes a resync, and we don't
+    // know IJV's resync trigger.
     //
-    // The splash hunt is over: searching the prior 0x100 probe for
-    // 'IJV' / 'MOD' / 'V2.9R' returned zero hits, so the "IJV MOD"
-    // boot text lives in firmware ROM, not EEPROM.
-    probeBlock('probe_above_stock_cap', 0x2000, 0x2000),
+    // The "IJV MOD" splash hunt is closed: searching the probe for
+    // 'IJV' / 'MOD' / 'V2.9R' returned zero hits across all regions.
+    // Boot text lives in firmware ROM, not EEPROM.
+    probeBlock('channels_mirror', 0x2000, 0x0110),
   ],
   notes:
     'IJV is closed-source. Profile covers the layout IJV provably ' +

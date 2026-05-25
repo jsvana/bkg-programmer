@@ -12,8 +12,11 @@ import { channelRecord } from './channel-record';
  *
  * Byte 12 repacking (empirically verified on V2.9R5, 2026-05-25):
  *
- *   3-state TX-power capture against the same VFO slot 5
- *   (scratch_channels, abs 0x0CDC = scratch_channels[5] byte 12):
+ *   3-state TX-power capture written to byte 12 of scratch_channels[5]
+ *   (abs 0x0CDC). scratch_channels[5] was the live VFO working copy
+ *   of channel 1 (144.025 MHz, 2m band) at the time, so the menu's
+ *   TX-power knob wrote there; channel 1's own record at 0x000C
+ *   ended up with the final value after the menu Save.
  *
  *     TX Low  → 0x02 = 0000 0010
  *     TX Mid  → 0x0A = 0000 1010
@@ -95,7 +98,7 @@ export const channelRecordIjv: StructTemplate = {
         'IJV shifts tx_power one bit higher than stock K5: stock uses ' +
         'bits 2–3, IJV uses bits 3–4. Verified by 3-state capture on ' +
         'V2.9R5 (2026-05-25): Low→0b00, Mid→0b01, High→0b10 at ' +
-        'scratch_channels[5] byte 12.',
+        'scratch_channels[5] byte 12 (live VFO mirror of channel 1).',
       group: 'ch.tx',
       type: {
         kind: 'enum',
