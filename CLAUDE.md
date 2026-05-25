@@ -239,8 +239,30 @@ Don't guess at them; capture from real radios.
      on stock firmware.
      Model string "UV-K1" is at **0x0EC0** on stock K1, not 0x1ED0 like V1.
      Default passwords "77777"/"88888" at 0x0EE8/0x0EF0.
-   - **Stock UV-K5 V1/V2**, **egzumer**, **F4HWN-on-K5-V1**, **F4HWN-NR7Y**:
-     still need real captures.
+   - **F4HWN Fusion NR7Y CW mod on UV-K1**: captures `NR7Y v1.0.0`
+     (matches `/^NR7Y\b/i`). Profile `uv-k1-f4hwn-nr7y` verified
+     2026-05-25 by hello-reply round trip on a real UV-K1 Mini Kong.
+     Briand's virtual EEPROM mapping (see
+     briand/uv-k1-k5v3-firmware-custom `App/driver/eeprom_compat.c`)
+     agrees byte-for-byte with the profile's offsets: channels
+     0x0000-0x3FFF, names 0x4000-0x7FFF, attrs+scanlist 0x8000-0x886E,
+     14 VFO entries 0x9000-0x90D6, settings region 0xA000-0xA170
+     (F4HWN block at 0xA158), calibration 0xB000-0xB1FF (physically
+     remapped to flash 0x010000), boot logo 0xC000-0xCFFF.
+     **This firmware does NOT preserve a model identifier string.**
+     The 0x0EC0 location where stock K1 holds "UV-K1" falls inside
+     briand's remapped channel-data region and returns channel bytes,
+     not ASCII. Registry entry uses `modelBytesPreserved: false` and
+     UI shows the radio as AMBIGUOUS (uv-k1 / uv-k5-v3) because the
+     same firmware runs on both. NR7Y adds CW keyer fields
+     (CW_TONE_FREQUENCY, CW_KEY_WPM, CW_KEYER_MODE, etc.) declared
+     in `App/settings.h` `EEPROM_Config_t`, but their concrete EEPROM
+     offsets within 0xA160-0xA170 are not yet captured — modeling
+     them requires either grepping the briand fork for
+     `SETTINGS_Save*` calls touching them, or a BEFORE/AFTER backup
+     diff after changing a CW menu value. Self-test verdict pending.
+   - **Stock UV-K5 V1/V2**, **egzumer**, **F4HWN-on-K5-V1**: still
+     need real captures.
 
 ## How to add a new firmware variant
 

@@ -34,6 +34,28 @@ const verdicts: Record<string, SelfTestVerdict> = {
     rebootWaitMs: 2733,
     ranAt: '2026-05-25T18:27:14.791Z',
   },
+  // NR7Y v1.0.0 (F4HWN Fusion CW mod) on UV-K1 Mini Kong. Self-test
+  // captured 2026-05-25:
+  //   protocolRoundtrip:        pass (48ms)
+  //   persistenceAcrossReboot:  pass — write survives 0x05DD reboot
+  //   silentDropDetection:      skipped (no unmapped address provided)
+  //   rebootTiming:             p95 2757.5ms across 3 trials → wait 2958ms
+  // Verdict applies to either candidate (uv-k1, uv-k5-v3) since the
+  // firmware and profile are shared; the K5-V3 entry below mirrors it.
+  [makeCacheKey('uv-k1', 'NR7Y v1.0.0')]: {
+    trustReadback: 'yes',
+    rebootWaitMs: 2958,
+    ranAt: '2026-05-25T22:59:28.356Z',
+  },
+  [makeCacheKey('uv-k5-v3', 'NR7Y v1.0.0')]: {
+    trustReadback: 'yes',
+    rebootWaitMs: 2958,
+    ranAt: '2026-05-25T22:59:28.356Z',
+    reason:
+      'Mirrored from uv-k1 verdict for NR7Y v1.0.0. Same firmware, same ' +
+      'profile, same protocol implementation. Re-run on actual K5 V3 ' +
+      'hardware if/when one is available.',
+  },
 };
 
 export function lookupSelfTest(

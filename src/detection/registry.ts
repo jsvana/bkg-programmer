@@ -31,16 +31,32 @@ export interface FirmwareEntry {
 }
 
 export const firmwareRegistry: ReadonlyArray<FirmwareEntry> = [
-  // TODO: populate from real version string captures.
   {
     id: 'f4hwn-nr7y-fusion',
     family: 'f4hwn-nr7y',
     displayName: 'F4HWN Fusion (NR7Y fork) for UV-K1 / UV-K5 V3',
-    versionStringPatterns: [/^NR7Y/i, /F4HWN.*K1/i],
+    // Captured 2026-05-25 on a real UV-K1 Mini Kong: hello reply was
+    // "NR7Y v1.0.0". The speculative /F4HWN.*K1/ fallback that was
+    // here before never matched real hardware — dropped.
+    versionStringPatterns: [/^NR7Y\b/i],
     candidateModels: ['uv-k1', 'uv-k5-v3'],
     profileId: 'uv-k1-f4hwn-nr7y',
-    modelBytesPreserved: true,
+    // briand's virtual EEPROM mapping (App/driver/eeprom_compat.c) does
+    // NOT expose any region containing an ASCII model identifier.
+    // Virtual 0x0EC0 (where stock K1 stores "UV-K1") falls inside the
+    // remapped channel-data region and returns channel bytes. There is
+    // no equivalent string elsewhere in the mapped space. Cross-check
+    // is impossible; trust the firmware fingerprint alone.
+    modelBytesPreserved: false,
     source: { repo: 'briand/uv-k1-k5v3-firmware-custom' },
+    notes:
+      'NR7Y v1.0.0 confirmed 2026-05-25 against a real UV-K1 Mini Kong: ' +
+      'fingerprint matches, profile binds, virtual EEPROM layout per ' +
+      'eeprom_compat.c agrees with the uv-k1-f4hwn-nr7y profile ' +
+      '(channels 0x0000, names 0x4000, attrs 0x8000, calib 0xB000, ' +
+      'F4HWN settings 0xA158). UI will show radio identity as ambiguous ' +
+      '(uv-k1 / uv-k5-v3) until/unless we add a manual picker — the ' +
+      'profile is shared, so writes are still safe once self-test runs.',
   },
   {
     id: 'f4hwn-v1',
