@@ -1,6 +1,7 @@
 import { ConnectPanel } from "./ConnectPanel";
 import { SelfTestPanel } from "./SelfTestPanel";
 import { BackupPanel } from "./BackupPanel";
+import { WritePanel } from "./WritePanel";
 
 export default function Home() {
   return (
@@ -19,6 +20,7 @@ export default function Home() {
       </header>
       <ConnectPanel />
       <SelfTestPanel />
+      <WritePanel />
       <BackupPanel />
     </main>
   );

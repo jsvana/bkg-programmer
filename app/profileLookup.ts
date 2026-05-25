@@ -4,8 +4,14 @@
  * connected radio's profile.
  */
 
-import { profiles } from "../src/schema/profiles/index";
-import type { Profile, ProfileId, ArrayModuleDef } from "../src/schema/types";
+import { profiles, moduleRegistry } from "../src/schema/profiles/index";
+import { resolveProfile } from "../src/schema/resolve";
+import type {
+  Profile,
+  ProfileId,
+  ArrayModuleDef,
+  ResolvedProfile,
+} from "../src/schema/types";
 
 export function findProfile(profileId: ProfileId): Profile | undefined {
   return profiles.find((p) => p.id === profileId);
@@ -52,4 +58,43 @@ export function isProfileTentative(profile: Profile): boolean {
   return profile.modules.some(
     (m) => "kind" in m && (m.kind === "block" || m.kind === "array") && m.readOnly === true,
   );
+}
+
+export function resolveProfileById(profileId: ProfileId): ResolvedProfile | null {
+  const profile = findProfile(profileId);
+  if (!profile) return null;
+  return resolveProfile(profile, moduleRegistry);
+}
+
+export interface AsciiFieldLocation {
+  address: number;
+  size: number;
+  maxLength: number;
+  label: string;
+}
+
+/**
+ * Look up the absolute address + slot size of an ASCII field inside a
+ * specific module (block). Returns null if the field doesn't exist or
+ * isn't an ASCII field.
+ */
+export function findAsciiField(
+  resolved: ResolvedProfile,
+  moduleId: string,
+  fieldId: string,
+): AsciiFieldLocation | null {
+  const mod = resolved.modules.find(
+    (m) => m.kind === "block" && m.id === moduleId,
+  );
+  if (!mod || mod.kind !== "block") return null;
+  const field = mod.fields.find((f) => f.id === fieldId);
+  if (!field) return null;
+  if (field.type.kind !== "ascii") return null;
+  if (field.location.kind !== "byte") return null;
+  return {
+    address: mod.baseOffset + field.location.offset,
+    size: field.location.size,
+    maxLength: field.type.maxLength,
+    label: field.label,
+  };
 }
