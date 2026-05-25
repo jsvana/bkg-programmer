@@ -62,6 +62,13 @@ export class WebSerialTransport implements Transport {
   private readLoopDone: Promise<void> | null = null;
   private closing = false;
   private opened = false;
+  /**
+   * Serializes concurrent request() calls so that getWriter() on the
+   * WritableStream never races. Each new request chains off this promise;
+   * the chain head swallows errors so one failed request doesn't poison
+   * subsequent ones.
+   */
+  private requestChain: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly port: SerialPort,
@@ -139,15 +146,20 @@ export class WebSerialTransport implements Transport {
   }
 
   async request(frame: Uint8Array, timeoutMs = 2000): Promise<Frame> {
+    // Serialize: chain this request after any in-flight one. Without this,
+    // two concurrent callers race on writable.getWriter() and the second
+    // throws "Cannot create writer when WritableStream is locked".
+    // The chain head is .catch'd so prior failures don't poison new requests.
+    const myTurn = this.requestChain.catch(() => undefined);
+    const result = myTurn.then(() => this.doRequest(frame, timeoutMs));
+    this.requestChain = result.catch(() => undefined);
+    return result;
+  }
+
+  private async doRequest(frame: Uint8Array, timeoutMs: number): Promise<Frame> {
     // Register the waiter BEFORE writing so a fast reply can't race past us.
     const reply = this.recv(timeoutMs);
-    try {
-      await this.send(frame);
-    } catch (err) {
-      // Best-effort: drop the waiter we just registered.
-      // recv() will time out otherwise.
-      throw err;
-    }
+    await this.send(frame);
     return reply;
   }
 
