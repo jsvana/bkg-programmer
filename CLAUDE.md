@@ -1,0 +1,296 @@
+# CLAUDE.md
+
+Context for Claude Code (or any LLM-assisted continuation) on this
+project. Read this before making changes.
+
+## What this is
+
+A web-based programmer for Quansheng UV-K5 (V1/V2/V3) and UV-K1 radios
+running F4HWN-family custom firmware. Scope is intentionally narrow.
+See `README.md` and `docs/00-overview.md` for the full pitch.
+
+## Status
+
+Design session output + working skeleton. ~50% of the safety-relevant
+code is implemented and unit-testable (protocol framing, schema
+validator). The rest is interfaces + skeletons that need real hardware
+to finalize. Honest status table is in `README.md`.
+
+## Hard-won facts that will save you days
+
+These are easy to get wrong and expensive to debug. Verify before
+overriding.
+
+### F4HWN settings address differs by hardware
+
+- V1 (DP32G030): **0x1FF0**
+- V3/K1 (PY32F071): **0xA158** (maps to PY25Q16 flash 0x00A158)
+
+Mixing these up corrupts calibration on the V1 or channel names on the
+V3/K1. Source: `App/settings.c:470` in the briand fork.
+
+### Write protocol constraints
+
+- `size` field is u8, must be a **multiple of 8**. Non-multiples are
+  rejected or partially processed; don't rely on partial.
+- Max 248 bytes per write command in practice (0xF8, largest multiple
+  of 8 fitting in u8). `Session.writeEeprom` auto-chunks.
+- Writes to `[0x0E98, 0x0EA0)` on V1 require `bAllowPassword = 1`
+  (lockscreen guard).
+- Writes overlapping `[0x0F30, 0x0F40)` on V1 trigger
+  `SETTINGS_InitEEPROM()` — order these LAST in batch sequences.
+
+### CRC asymmetry
+
+The firmware **validates** inbound CRCs but **emits 0xFFFF placeholder**
+on outbound. Outbound CRCs must be correct (CRC-16/XMODEM, poly 0x1021,
+init 0x0000); inbound CRCs must NOT be validated. This is implemented
+in `src/protocol/framing.ts`. Source: `App/app/uart.c:782`.
+
+### Sessions are stateful
+
+Every read/write echoes a 32-bit timestamp set in the `0x0514` hello.
+Reconnecting the port = new session = new hello. Handled in
+`src/protocol/session.ts`.
+
+### V3/K1 unmapped EEPROM is silent
+
+Reads return `0xFF`, writes are dropped. **Read-back is the only proof
+a write took.** Map of valid regions in
+`App/driver/eeprom_compat.c:39-72` in the briand fork, summarized in
+`docs/01-protocol.md`.
+
+### V3/K1 channel attributes are cached in RAM
+
+The firmware keeps active channel attrs in a small cache (`misc.h:256-263`
+in the briand fork). A read-back after write may report success even
+if the EEPROM wasn't touched. This is the entire reason the self-test
+exists (`docs/09-self-test.md`). **Until the self-test confirms
+persistence on a specific firmware version, treat verify as
+provisional.**
+
+### Channel attribute layouts differ
+
+- V1: 1 byte per channel. `band` is 4 bits.
+- V3/K1: 2 bytes per channel. `band` is 3 bits, with an `exclude` bit
+  added and a full byte for `scanlist` (24 lists + ALL).
+
+Two separate modules: `channelAttrsV1` and `channelAttrsV3`. Profiles
+pick one. Sources: `misc.h:178-189` (egzumer) and `misc.h:242-253`
+(briand).
+
+### Channel record is shared
+
+The 16-byte channel record is identical between V1 and V3/K1. Channel
+names (16 bytes, 10 chars + 6 padding) too. Only the array base
+offsets differ.
+
+## Design decisions worth not relitigating
+
+These were debated and settled during the design session. Reopen only
+with strong reason.
+
+### Composition over inheritance for modules
+
+Profiles are lists of modules, deduped by ID with last-write-wins. No
+parent profiles, no partial overrides, no diamond problems. When bit
+semantics change between firmware versions, the whole module gets
+replaced. See `docs/03-schema.md`.
+
+### Build-time overlap validation, not runtime
+
+The validator in `src/schema/validate.ts` runs against every profile
+at `npm run validate-schema`, wired to `prebuild`. You can't deploy a
+schema with overlapping bit claims. Coverage % is diagnostic, not a
+gate. See `docs/06-validation.md`.
+
+### Read-modify-write at the 8-byte block level
+
+Because every EEPROM write must be 8-aligned and a multiple of 8
+bytes, changing one bit-field requires reading the surrounding 7
+bytes first. The planner does this and marks the preserved byte
+indices on each batch. If verify later shows preserved bytes
+changed, that's drift, not write failure. See `docs/08-write-plan.md`.
+
+### Verify after every batch, mandatory
+
+No "fast mode" toggle. The bug reports it'll prevent are worth more
+than ~10 seconds on a full restore. Final sweep verify also
+mandatory.
+
+### No automatic retry on verify mismatch
+
+Verify mismatch is signal that something is wrong. Retrying masks
+the underlying problem. Single retry on protocol errors (CRC,
+timeout) is fine; retrying on verify is not.
+
+### Reload-trigger batches go last
+
+Writes overlapping `[0x0F30, 0x0F40)` cause `SETTINGS_InitEEPROM()`.
+Anything written before this batch is observed; anything after may
+not be until next reboot. Planner enforces ordering: data first,
+calibration before triggers, reload-triggers last, AES last.
+
+### Backup format is JSON-with-base64, not flat dumps
+
+V3/K1 virtual EEPROM is 64 KB with significant holes. Flat dumps
+waste bandwidth and obscure structure. JSON with per-region base64
+is shareable, diffable, and survives intermediary tools. See
+`docs/07-backup-format.md`.
+
+### Self-test is per (model, firmware version)
+
+Cached in IndexedDB. Result drives executor's `trustReadback` mode
+(`yes` | `with-reboot-verify` | `no`). See `docs/09-self-test.md`.
+
+## What was deliberately NOT done
+
+Don't add these without strong reason. They were considered and
+rejected in the design session.
+
+- **Universal multi-radio programmer.** Scope creep; existing tools
+  cover the breadth case. We do depth on K5/K1/F4HWN instead.
+- **Firmware flashing.** Use UVTools2. Rebuilding the flasher adds
+  risk without value.
+- **Automatic verify-retry.** Masks bugs.
+- **Field aliases / overlapping-by-design fields.** Once the escape
+  hatch exists, contributors will use it to silence the validator.
+- **Backend / accounts / telemetry.** Static SPA only, all local
+  data, no Anthropic.
+- **Coverage % as CI gate.** False signal. Higher coverage isn't
+  better.
+
+## Open questions requiring hardware
+
+These are flagged in `README.md` and inline in the relevant files.
+Don't guess at them; capture from real radios.
+
+1. Does write-then-read actually test EEPROM persistence on V3/K1?
+   (Run the self-test.)
+2. Exact location of Quansheng model identifier bytes on V3/K1.
+   (V1 is ~0x1ED0. **Stock UV-K1: confirmed at 0x0EC0** — captured
+   2026-05-25. V3 stock location still TBD.)
+3. Battery voltage read availability (`0x0527` is behind
+   `ENABLE_EXTRA_UART_CMD`, not always compiled in).
+4. Reboot timing after `0x05DD`. (Measure in self-test Test D.)
+5. Power calibration table internal layout (0x000-0xBF and 0xD0-0x13F
+   inside the calibration region — currently opaque blobs).
+6. Real version-string captures for the firmware registry
+   (`src/detection/registry.ts` has placeholder patterns).
+   - **Stock UV-K1 Mini Kong**: captures `7.03.01` (matches `/^7\.\d+\.\d+$/`).
+     Profile `uv-k1-stock` verified 2026-05-25 by BEFORE/AFTER backup diff
+     after setting channel 1's name to "TESTCHAN" in the radio menu — the
+     write landed at exactly `0x0F50`, the V1 channel_names base.
+     **Stock K1 uses the V1 layout**, NOT F4HWN's V3-style virtual mapping.
+     The F4HWN K1 profile maps the radio differently because F4HWN's
+     `eeprom_compat.c` remaps it; stock does no such thing.
+     Confirmed mapped EEPROM extent: 0x0000-0x3407 (~13 KB). Past that is
+     unmapped. Menu caps at 200 channels (despite "1024 channels" marketing,
+     which appears to require custom firmware).
+     Extras beyond V1: boot logo at 0x2E00 (stored twice, byte-identical
+     copies at 0x2E00 and 0x3000); aux bitmap at 0x3200.
+     Model string "UV-K1" is at **0x0EC0** on stock K1, not 0x1ED0 like V1.
+     Default passwords "77777"/"88888" at 0x0EE8/0x0EF0.
+   - **Stock UV-K5 V1/V2**, **egzumer**, **F4HWN-on-K5-V1**, **F4HWN-NR7Y**:
+     still need real captures.
+
+## How to add a new firmware variant
+
+1. Capture a hello reply from a radio running it; note the version
+   string.
+2. Add a `FirmwareEntry` to `src/detection/registry.ts` with a
+   regex matching the version string.
+3. If the bit layout matches an existing profile (most F4HWN forks
+   do), reuse it via `profileId`. If not, copy an existing
+   profile and modify modules.
+4. If bit semantics changed for a setting, write a new module
+   rather than editing an existing one. Profiles dedupe by module
+   ID; new profile lists the new module last to override.
+5. Run `npm run validate-schema`. Fix any overlap errors.
+6. Add the firmware to the registry's candidate models so
+   detection works.
+7. If possible, capture an EEPROM dump and add a round-trip test.
+
+## How to add a new field
+
+1. Find the right module in `src/schema/modules/`.
+2. Add the field with a stable ID. Pick `applyMode` carefully:
+   `live` for things the firmware reads on every use,
+   `reload-settings` for things that load at boot/menu-change,
+   `reboot` for things that load only at power-on.
+3. Run `npm run validate-schema`. If it overlaps with another
+   field, you either (a) misread the firmware source, or
+   (b) the field belongs in a new module that replaces the
+   conflicting one.
+4. If the field is part of a forked firmware's new feature, mark
+   `requires: ['ENABLE_FEAT_X']` so the UI can hide it on builds
+   without that feature.
+
+## How to debug a verify mismatch
+
+1. Is the address in a valid mapped region for this radio?
+   (Check `eeprom_compat.c` for V3/K1.)
+2. Is the write size a multiple of 8? Check `Session.writeEeprom`
+   isn't being called with raw user data of odd length.
+3. Is the session timestamp correct? Sessions die on reconnect.
+4. Is the radio in lockscreen? Hello reply has the flag.
+5. Did the self-test pass for this firmware version? If
+   persistence-across-reboot failed, the firmware caches this
+   region and you need `trustReadback: 'with-reboot-verify'`.
+6. Are two tabs talking to the same port? Check IndexedDB
+   `bkg-locks`.
+
+## Source repos to consult
+
+These are the upstream-of-upstream and the active forks. When
+firmware behavior is unclear, grep these:
+
+- `briand/uv-k1-k5v3-firmware-custom` (V3/K1 reference)
+- `egzumer/uv-k5-firmware-custom` (V1 reference)
+- `armel/uv-k5-firmware-custom` (F4HWN main)
+- `DualTachyon/uv-k5-firmware` (upstream stock)
+
+Specific files we relied on:
+
+- `App/app/uart.c` — command dispatcher (handlers around lines
+  286-540, dispatch at 766+, XOR key at 163)
+- `App/settings.c` — settings load/save, calibration handlers
+  (briand: calibration at 522-570; F4HWN settings load at
+  467-519)
+- `App/driver/eeprom_compat.c` — V3/K1 virtual EEPROM mapping
+- `App/driver/uart.c` — baud rate, low-level UART config
+- `App/misc.h` — channel attribute structs (line ranges in
+  module files)
+- `tools/serialtool/msg.py` — canonical Python reference for
+  protocol codec (MIT-licensed)
+
+## Coding conventions
+
+- TypeScript strict mode + `noUncheckedIndexedAccess` +
+  `exactOptionalPropertyTypes`. Don't relax these without reason.
+- ESM modules. Relative imports in `src/` and `scripts/` do NOT use
+  `.js` extensions (Turbopack can't resolve them; tsx handles
+  bare/extensionless fine).
+- Tests live next to source as `*.test.ts`, run via Vitest.
+  `npm test` uses `--passWithNoTests` until real tests land.
+- No external runtime dependencies in `src/` — pure TS. The browser
+  UI is Next.js (App Router) under `app/`, with client components
+  importing from `src/` directly.
+- Prefer `Uint8Array` over `Buffer` for portability.
+- DataView for endian-explicit reads/writes; never trust the
+  platform default.
+
+## When the LLM is uncertain
+
+If you find yourself reasoning about firmware behavior without a
+specific file:line citation, stop. Either:
+
+1. Grep the source repos listed above and add the citation.
+2. Flag the assumption inline and to the user.
+3. Punt to "needs hardware verification" and add to the open
+   questions list.
+
+The whole point of this design is that we know what we know and
+admit what we don't. Don't paper over uncertainty with plausible-
+sounding implementations — the radios will tell us we were wrong,
+loudly and expensively.
