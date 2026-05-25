@@ -20,6 +20,7 @@ export type FirmwareFamilyId =
   | 'egzumer'
   | 'f4hwn'
   | 'f4hwn-nr7y'
+  | 'ijv'
   | 'unknown';
 
 export type ModuleId = string;

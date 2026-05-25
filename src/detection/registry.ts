@@ -53,6 +53,30 @@ export const firmwareRegistry: ReadonlyArray<FirmwareEntry> = [
     source: { repo: 'armel/uv-k5-firmware-custom' },
   },
   {
+    id: 'ijv-k5-v1',
+    family: 'ijv',
+    displayName: 'IJV mod for UV-K5 V1/V2 (V2.9 / V3.60)',
+    // Captured from real radio: V2.9R5. IJV manual (universirius.com) lists
+    // V2.9Rx and V3.60 as K5 V1/V2 releases. Pattern matches both. V4 (K1
+    // / K5v3 only) is deliberately not matched here.
+    // Ordered above the stock UV-K1 7.x pattern so the leading 'V' wins
+    // unambiguously; ordered above the F4HWN pattern because IJV strings
+    // contain no F4HWN/EGZUMER token.
+    versionStringPatterns: [/^V\d+\.\d+(R\d+)?$/i],
+    candidateModels: ['uv-k5-v1', 'uv-k5-v2'],
+    profileId: 'uv-k5-ijv',
+    // IJV is closed-source; we have not confirmed it preserves the V1
+    // model identifier at 0x1ED0. Leave false until verified — reading
+    // the wrong bytes could trip detect.ts's 'conflict' branch and
+    // refuse all flashing.
+    modelBytesPreserved: false,
+    source: { url: 'https://www.universirius.com/preppers/quansheng-uv-k5-manuale-del-firmware-ijv/' },
+    notes:
+      'Closed-source mod. Confirmed version string V2.9R5 on a real K5 ' +
+      'on 2026-05-25. Profile is read-only V1-shape only; settings ' +
+      'region not decoded. See uv-k5-ijv profile for the rationale.',
+  },
+  {
     id: 'uv-k1-stock-7x',
     family: 'stock',
     displayName: 'UV-K1 Mini Kong stock firmware (7.x)',

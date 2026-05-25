@@ -1,12 +1,14 @@
 import { uvK5V1F4hwn, v1ResolverModules } from './uv-k5-v1-f4hwn';
 import { uvK1F4hwnNr7y, v3ResolverModules } from './uv-k1-f4hwn-nr7y';
 import { uvK1Stock } from './uv-k1-stock';
+import { uvK5Ijv, ijvResolverModules } from './uv-k5-ijv';
 import type { Profile, ModuleId, BlockModuleDef } from '../types';
 
 export const profiles: ReadonlyArray<Profile> = [
   uvK5V1F4hwn,
   uvK1F4hwnNr7y,
   uvK1Stock,
+  uvK5Ijv,
 ];
 
 /**
@@ -17,10 +19,11 @@ export const profiles: ReadonlyArray<Profile> = [
 export const moduleRegistry: ReadonlyMap<ModuleId, BlockModuleDef> = new Map([
   ['calibration', v1ResolverModules.calibration],
   ['f4hwn_settings', v1ResolverModules.f4hwnSettings],
+  ['ijv_settings', ijvResolverModules.ijvSettings],
 ] satisfies Array<[ModuleId, BlockModuleDef]>);
 
-// v3ResolverModules contain the same module definitions (same imports);
-// listed in both files for clarity but they're literally identical references.
+// v3ResolverModules's contents are duplicate references to modules already
+// registered above; listed alongside the v3 profile for clarity.
 void v3ResolverModules;
 
-export { uvK5V1F4hwn, uvK1F4hwnNr7y, uvK1Stock };
+export { uvK5V1F4hwn, uvK1F4hwnNr7y, uvK1Stock, uvK5Ijv };
