@@ -465,3 +465,45 @@ The whole point of this design is that we know what we know and
 admit what we don't. Don't paper over uncertainty with plausible-
 sounding implementations — the radios will tell us we were wrong,
 loudly and expensively.
+
+## Design Context
+
+The same epistemic discipline applies to the UI. Full design context
+lives in `.impeccable.md`; in summary:
+
+### Users
+
+Amateur radio operators (technical hobbyists) configuring Quansheng
+UV-K5/UV-K1 handhelds running F4HWN-family firmware. Technically
+literate; they read firmware source, talk in hex offsets and CRCs.
+
+### Brand Personality
+
+**Precise. Honest. Technical.** Workshop-tool feel — closer to an
+oscilloscope front panel than a SaaS dashboard. Cites firmware
+file:line citations without apology. Surfaces uncertainty rather
+than papering over it.
+
+### Aesthetic Direction
+
+- Service-manual utilitarian with measurement-equipment cues.
+- Three distinct top-level tools (Flash firmware / Program / Splash);
+  hub picks one and the workspace commits to it.
+- Connection state is persistent across all tools as a status rail,
+  not a panel.
+- System-driven light + dark theme.
+- Anti-references: SaaS stat cards, gradient hero text, glassmorphism,
+  decorative icon-above-heading layouts, AI-cyan accents.
+
+### Design Principles
+
+1. **One tool at a time.** Hub uses prominence to guide; once chosen,
+   the workspace commits.
+2. **Status is structural.** Port / radio / firmware / lockscreen flag
+   live in a persistent rail, not in a panel.
+3. **Cite, don't reassure.** When firmware behavior is empirically
+   unknown, say so on screen. Monospace for anything that came from
+   the radio.
+4. **Disciplined neutrals, single accent.** Warm-tinted grays toward
+   an amber signal hue. No gradients.
+5. **No nested cards.** Flat sections separated by hairline rules.

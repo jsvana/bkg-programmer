@@ -1,39 +1,33 @@
-import { ConnectPanel } from "./ConnectPanel";
-import { RadioIdentityHelp } from "./RadioIdentityHelp";
-import { SelfTestPanel } from "./SelfTestPanel";
-import { BackupPanel } from "./BackupPanel";
-import { WritePanel } from "./WritePanel";
-import { ConfigPanel } from "./ConfigPanel";
-import { SplashFlasherPanel } from "./SplashFlasherPanel";
-import { SplashTestPanel } from "./SplashTestPanel";
-import { StockFirmwareGuide } from "./StockFirmwareGuide";
-import { WelcomeStringsPanel } from "./WelcomeStringsPanel";
+"use client";
+
+import { useState } from "react";
+import { StatusRail } from "./StatusRail";
+import { Hub } from "./Hub";
+import { ToolWorkspace } from "./ToolWorkspace";
+import type { ToolId, UtilityId } from "./types";
 
 export default function Home() {
+  const [view, setView] = useState<ToolId | UtilityId | null>(null);
+
   return (
-    <main
-      style={{
-        maxWidth: 760,
-        margin: "0 auto",
-        padding: "48px 24px",
-      }}
-    >
-      <header style={{ marginBottom: 32 }}>
-        <h1 style={{ margin: 0, fontSize: 28 }}>bkg-programmer</h1>
-        <p style={{ margin: "8px 0 0", color: "var(--muted)" }}>
-          Quansheng UV-K5 / UV-K1 (F4HWN firmware) — local-only, in-browser.
-        </p>
+    <div className="app">
+      <header className="topbar">
+        <div className="wordmark">
+          <span className="wordmark-name">bkg-programmer</span>
+          <span className="wordmark-tag">UV-K5 / UV-K1 · F4HWN</span>
+        </div>
+        <div className="topbar-meta">local · in-browser · web serial</div>
       </header>
-      <ConnectPanel />
-      <RadioIdentityHelp />
-      <StockFirmwareGuide />
-      <SelfTestPanel />
-      <WritePanel />
-      <ConfigPanel />
-      <BackupPanel />
-      <SplashTestPanel />
-      <WelcomeStringsPanel />
-      <SplashFlasherPanel />
-    </main>
+
+      <StatusRail />
+
+      <main className="workspace">
+        {view === null ? (
+          <Hub onSelect={setView} onOpenUtility={setView} />
+        ) : (
+          <ToolWorkspace tool={view} onBack={() => setView(null)} />
+        )}
+      </main>
+    </div>
   );
 }
