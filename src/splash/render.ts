@@ -21,8 +21,13 @@ import {
 } from './bitmap';
 
 const SCALE = 8;
-const CALL_FONT_PX = 58; // in 8x space
-const NUM_FONT_PX = 66;  // in 8x space
+// Max font sizes (in 8x supersampled space). Shrink-to-fit clamps these per
+// string so a 6-char callsign and a short "#42" both use as much of the
+// available 30×30 cell as they can. The K1's tall display pixels mean
+// source N-px text reads ~1.5×N at viewing distance — so generous source
+// sizes are safe.
+const CALL_FONT_PX_MAX = 22 * SCALE;
+const NUM_FONT_PX_MAX = 24 * SCALE;
 const THRESHOLD = 100;
 
 const RIGHT_PANEL_X = 96;
@@ -32,9 +37,17 @@ const PANEL_H = 64;
 
 const CALLSIGN_CENTER: readonly [number, number] = [16, 16];
 const NUMBER_CENTER: readonly [number, number] = [16, 48];
+// Fit windows: leave a 1-px margin around the 32×32 cell so glyphs don't
+// kiss the panel edge or the divider.
+const CALL_MAX_W = 30 * SCALE;
+const CALL_MAX_H = 28 * SCALE;
+const NUM_MAX_W = 30 * SCALE;
+const NUM_MAX_H = 28 * SCALE;
 const DIVIDER_Y = 32;
 const DIVIDER_X0 = 2;
 const DIVIDER_X1 = 30;
+
+const FONT_FAMILY = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 export const MAX_CALLSIGN_LEN = 6;
 
@@ -44,11 +57,12 @@ export interface RenderOptions {
 }
 
 /**
- * Render the right panel into the destination bitmap. Mutates `dst`.
+ * Composite the dynamic right panel onto a copy of `template`. Returns the
+ * new bitmap; `template` is not mutated.
  *
  * Requires a `document` global — browser/jsdom only. The unit tests for
- * bitmap.ts / bmp.ts cover the parts that need to run headless; this
- * function is exercised by the UI panel.
+ * bitmap.ts cover the parts that need to run headless; this function is
+ * exercised by the UI panel.
  */
 export function renderBadge(
   template: RowBitmap,
@@ -84,9 +98,19 @@ export function renderBadge(
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
 
-  // Callsign
-  ctx.font = `bold ${CALL_FONT_PX}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-  drawCenteredText(ctx, callText, CALLSIGN_CENTER[0] * SCALE, CALLSIGN_CENTER[1] * SCALE);
+  // Callsign — shrink-to-fit so 4-char calls don't render at the same tiny
+  // size required for 6-char calls. The 6-char limit means a fixed size has
+  // to be tuned for the worst case, which leaves shorter strings looking
+  // half-empty inside their cell.
+  drawTextFitted(
+    ctx,
+    callText,
+    CALLSIGN_CENTER[0] * SCALE,
+    CALLSIGN_CENTER[1] * SCALE,
+    CALL_MAX_W,
+    CALL_MAX_H,
+    CALL_FONT_PX_MAX,
+  );
 
   // Divider hairline
   ctx.fillRect(
@@ -96,9 +120,16 @@ export function renderBadge(
     Math.max(1, Math.floor(SCALE / 2)),
   );
 
-  // BKG number
-  ctx.font = `bold ${NUM_FONT_PX}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-  drawCenteredText(ctx, numText, NUMBER_CENTER[0] * SCALE, NUMBER_CENTER[1] * SCALE);
+  // BKG number — same shrink-to-fit treatment.
+  drawTextFitted(
+    ctx,
+    numText,
+    NUMBER_CENTER[0] * SCALE,
+    NUMBER_CENTER[1] * SCALE,
+    NUM_MAX_W,
+    NUM_MAX_H,
+    NUM_FONT_PX_MAX,
+  );
 
   // Downsample to 32x64 by averaging the 8x8 blocks. We do this manually
   // (rather than via ctx.drawImage scaling) so the threshold is applied to
@@ -130,12 +161,34 @@ export function renderBadge(
   return opts.invert ? invertInPlace(result) : result;
 }
 
-function drawCenteredText(
+/**
+ * Bold, centered, shrink-to-fit. Re-measures up to a few times scaling the
+ * font down by the binding-dimension ratio. Width is the usual binding
+ * constraint here; the height check guards numeric overflow cases like
+ * "#9999".
+ */
+function drawTextFitted(
   ctx: CanvasRenderingContext2D,
   text: string,
   cx: number,
   cy: number,
+  maxWidth: number,
+  maxHeight: number,
+  basePx: number,
 ): void {
+  let px = basePx;
+  for (let i = 0; i < 8; i++) {
+    ctx.font = `bold ${Math.max(1, Math.floor(px))}px ${FONT_FAMILY}`;
+    const m = ctx.measureText(text);
+    const approxH = px * 0.8; // bold caps run ~0.8 of font-px tall
+    const wOk = m.width <= maxWidth;
+    const hOk = approxH <= maxHeight;
+    if (wOk && hOk) break;
+    const wScale = wOk ? 1 : maxWidth / m.width;
+    const hScale = hOk ? 1 : maxHeight / approxH;
+    px = Math.floor(px * Math.min(wScale, hScale) * 0.98);
+    if (px < 4) break;
+  }
   ctx.fillText(text, cx, cy);
 }
 

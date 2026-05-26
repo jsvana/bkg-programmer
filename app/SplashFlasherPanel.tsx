@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "./SessionContext";
-import { decodeMonoBmp } from "../src/splash/bmp";
 import {
   PIXEL_BYTES,
   WIDTH,
@@ -11,6 +10,7 @@ import {
   unpackPageMajor,
   type RowBitmap,
 } from "../src/splash/bitmap";
+import { generateBaseTemplate } from "../src/splash/template";
 import { MAX_CALLSIGN_LEN, renderBadge, toPreviewImageData } from "../src/splash/render";
 
 // Boot-logo sector layout per briand's ui/welcome.c:36-46:
@@ -95,25 +95,14 @@ export function SplashFlasherPanel() {
   const [probeBytesB64, setProbeBytesB64] = useState<string | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Load the base template once on mount.
+  // Render the static base template once on mount. Generated in-canvas
+  // (see src/splash/template.ts) — no external asset to fetch.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/bkg_base_template.bmp");
-        if (!res.ok) throw new Error(`fetch ${res.status} ${res.statusText}`);
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        const decoded = decodeMonoBmp(bytes);
-        if (!cancelled) setTemplate(decoded);
-      } catch (err) {
-        if (!cancelled) {
-          setTemplateError(err instanceof Error ? err.message : String(err));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      setTemplate(generateBaseTemplate());
+    } catch (err) {
+      setTemplateError(err instanceof Error ? err.message : String(err));
+    }
   }, []);
 
   // Hydrate persisted state.
