@@ -33,8 +33,20 @@ V3/K1. Source: `App/settings.c:470` in the briand fork.
 
 - `size` field is u8, must be a **multiple of 8**. Non-multiples are
   rejected or partially processed; don't rely on partial.
-- Max 248 bytes per write command in practice (0xF8, largest multiple
-  of 8 fitting in u8). `Session.writeEeprom` auto-chunks.
+- **Max 232 bytes per write command in practice (0xE8), NOT the
+  protocol's theoretical 248 (0xF8).** The firmware's UART receive
+  buffer is 256 bytes (`App/driver/uart.c:39` `UART_DMA_Buffer[256]`
+  and `App/driver/vcp.c:25` `VCP_RxBuf[256]`). A WRITE_EEPROM frame
+  with 248 bytes of data is 268 bytes on the wire
+  (SOF 2 + size 2 + CMD_051D header 12 + data 248 + CRC 2 + EOF 2)
+  and the firmware's parser at `App/app/uart.c:860` rejects it with
+  `if ((Size + 8u) > ReadBufSize)`. No command dispatched, no reply,
+  host times out. Confirmed empirically against UV-K1+NR7Y v1.0.0 on
+  2026-05-25 — every 1024-byte bitmap write timed out at 120 s/chunk
+  until the host chunk-size was clamped to 232. Small writes
+  (16-byte welcome-string updates etc.) stayed under the limit and
+  worked fine, which is why this hid for so long.
+  `Session.writeEeprom` auto-chunks at 232.
 - Writes to `[0x0E98, 0x0EA0)` on V1 require `bAllowPassword = 1`
   (lockscreen guard).
 - Writes overlapping `[0x0F30, 0x0F40)` on V1 trigger

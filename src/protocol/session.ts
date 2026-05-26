@@ -79,7 +79,19 @@ export class Session {
     const { timeoutMs, ...wireOpts } = opts;
     let offset = 0;
     while (offset < data.length) {
-      const chunkSize = Math.min(0xF8, data.length - offset); // 248, multiple of 8
+      // Max data per WRITE_EEPROM = 232 bytes, NOT the protocol's
+      // theoretical 248. The firmware's UART_DMA_Buffer is 256 bytes
+      // total, which has to hold the full frame:
+      //   SOF(2) + size_field(2) + body + CRC(2) + EOF(2)  ≤ 256
+      // body = CMD_051D fixed (12 bytes: Header(4)+Offset(2)+Size(1)+
+      //                                  bAllowPassword(1)+Timestamp(4))
+      //      + Data
+      // So Data ≤ 256 - 8(framing) - 12(header) = 236, rounded down to
+      // a multiple of 8 = 232 (= 0xE8). Sending 248-byte chunks causes
+      // the firmware's frame parser (app/uart.c line ~860) to reject
+      // the frame with no reply, and the host times out. Verified
+      // empirically against UV-K1+NR7Y on 2026-05-25.
+      const chunkSize = Math.min(0xE8, data.length - offset);
       const chunk = data.subarray(offset, offset + chunkSize);
       const frame = await this.transport.request(
         buildWriteEeprom(address + offset, chunk, this.timestamp, wireOpts),

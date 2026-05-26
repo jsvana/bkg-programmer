@@ -13,14 +13,50 @@ import {
 } from "../src/splash/bitmap";
 import { MAX_CALLSIGN_LEN, renderBadge, toPreviewImageData } from "../src/splash/render";
 
-const BOOT_LOGO_ADDR = 0xc000;
+// Boot-logo sector layout per briand's ui/welcome.c:36-46:
+//   [0xC000..0xC007] 8-byte header (reserved for future magic/version/flags)
+//   [0xC008..0xC407] 128x64 monochrome bitmap, 1024 B, page-major LSB-top
+// The firmware blits from physical 0x011008 (= virtual 0xC008) when
+// POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_LOGO (ui/welcome.c:247-259).
+const BOOT_LOGO_HEADER_ADDR = 0xc000;
+const BOOT_LOGO_BITMAP_ADDR = 0xc008;
+const BOOT_LOGO_HEADER_SIZE = 8;
 const BOOT_LOGO_SIZE = PIXEL_BYTES; // 1024
+
+// POWER_ON_DISPLAY_MODE byte 7 of the 8-byte settings block at physical
+// 0x00A0A8 (briand settings.c:255,265). Virtual == physical inside the
+// settings region per eeprom_compat.c:56.
+const MODE_BLOCK_ADDR = 0x00a0a8;
+const MODE_BLOCK_LEN = 8;
+const MODE_BYTE_INDEX = 7;
+// settings.h:28-41 with ENABLE_FEAT_F4HWN + ENABLE_FEAT_F4HWN_LOGO defined.
+// NR7Y v1.0.0 has both flags set (verified in App/CMakeLists.txt:215,249).
+const MODE_LOGO = 4;
+
 const STORAGE_KEY = "bkg-splash-flasher-state";
 const PREVIEW_ZOOM = 3;
-const WRITE_TIMEOUT_MS = 10_000;
+
+// Per-chunk timeout for boot-logo writes. briand's PY25Q16_WriteBuffer
+// erases + reprograms the full 4 KiB sector on every 8-byte sub-write
+// where new bytes differ from cache and cache has non-0xFF content.
+// Theoretical: 31 sub-writes × 300 ms erase ≈ 10 s per 248-byte chunk.
+// Observed on real K1+NR7Y hardware (2026-05-25): well over 30 s per
+// chunk — actual erase time is closer to 1 s on this chip, or main-loop
+// contention during the 31-sub-write busy block stretches wall time
+// 3-5×. 120 s leaves margin without making "stuck" cases unrecoverable.
+const BITMAP_WRITE_TIMEOUT_MS = 120_000;
+// Settings region writes don't have the same amplification (most bytes are
+// already non-0xFF settings, but only one or two erases needed for a 16- or
+// 8-byte write at most).
+const SETTINGS_WRITE_TIMEOUT_MS = 10_000;
 
 type Phase =
   | "idle"
+  // Backup snapshot persisted to localStorage but the write did not
+  // complete (yet, or at all). Restore is available to revert any partial
+  // write; Write button is disabled to avoid re-backing-up over the
+  // existing snapshot. Reach this phase by entering saveOriginalAndWrite
+  // and having any subsequent step fail before the final save.
   | "saved"
   | "written"
   | "reported-changed"
@@ -30,9 +66,12 @@ type Phase =
 interface PersistedState {
   phase: Phase;
   firmwareVersion: string;
-  // base64 of the 1024 bytes read from 0xC000 before any write.
-  originalBytesB64: string;
-  // base64 of the 1024 bytes we wrote (page-major packed).
+  // base64 of the 1024 bytes at 0xC008 before any write (the bitmap content
+  // that the firmware actually renders — header at 0xC000 is left alone).
+  originalBitmapB64: string;
+  // base64 of the original 8-byte settings block at 0x00A0A8.
+  originalModeBlockB64: string;
+  // base64 of the 1024 bytes we wrote (page-major packed BKG badge).
   writtenBytesB64: string;
   callsign: string;
   bkgNum: number;
@@ -156,15 +195,16 @@ export function SplashFlasherPanel() {
   async function probeRead() {
     if (!session) throw new Error("not connected");
     pushLog(
-      `Probe: reading 0x${BOOT_LOGO_ADDR.toString(16)} (${BOOT_LOGO_SIZE} bytes) without writing…`,
+      `Probe: reading bitmap region 0x${BOOT_LOGO_BITMAP_ADDR.toString(16)} ` +
+        `(${BOOT_LOGO_SIZE} bytes, skipping 8-byte header at 0x${BOOT_LOGO_HEADER_ADDR.toString(16)})…`,
     );
-    const bytes = await session.readEeprom(BOOT_LOGO_ADDR, BOOT_LOGO_SIZE);
+    const bytes = await session.readEeprom(BOOT_LOGO_BITMAP_ADDR, BOOT_LOGO_SIZE);
     const allFF = bytes.every((b) => b === 0xff);
     const all00 = bytes.every((b) => b === 0x00);
     setProbeBytesB64(bytesToBase64(bytes));
     pushLog(
       `Probe complete. hash=${shortHash(bytes)}` +
-        (allFF ? " (all 0xFF — region unmapped)" : "") +
+        (allFF ? " (all 0xFF — sector erased, no bitmap present yet)" : "") +
         (all00 ? " (all 0x00 — region zero, possibly never written)" : "") +
         ".",
     );
@@ -172,37 +212,91 @@ export function SplashFlasherPanel() {
 
   async function saveOriginalAndWrite() {
     if (!session || !previewBitmap) throw new Error("not ready");
-    pushLog(
-      `Reading 0x${BOOT_LOGO_ADDR.toString(16)} (${BOOT_LOGO_SIZE} bytes) for backup…`,
-    );
-    const original = await session.readEeprom(BOOT_LOGO_ADDR, BOOT_LOGO_SIZE);
-    pushLog(`Original captured. hash=${shortHash(original)}.`);
 
-    const packed = packPageMajor(previewBitmap);
+    // Step 1: backup the bitmap bytes (so Restore can undo) AND the settings
+    // block (so we know the current mode and can restore it too).
     pushLog(
-      `Writing badge to 0x${BOOT_LOGO_ADDR.toString(16)} ` +
-        `(${packed.length} bytes, ${WRITE_TIMEOUT_MS}ms/chunk timeout)…`,
+      `Reading 0x${BOOT_LOGO_BITMAP_ADDR.toString(16)} (${BOOT_LOGO_SIZE} bytes) for bitmap backup…`,
+    );
+    const originalBitmap = await session.readEeprom(BOOT_LOGO_BITMAP_ADDR, BOOT_LOGO_SIZE);
+    pushLog(`Bitmap captured. hash=${shortHash(originalBitmap)}.`);
+
+    pushLog(
+      `Reading 0x${MODE_BLOCK_ADDR.toString(16)} (${MODE_BLOCK_LEN} bytes) for settings backup…`,
+    );
+    const originalModeBlock = await session.readEeprom(MODE_BLOCK_ADDR, MODE_BLOCK_LEN);
+    const currentMode = originalModeBlock[MODE_BYTE_INDEX]!;
+    pushLog(
+      `Settings block captured. Current POWER_ON_DISPLAY_MODE = 0x${currentMode
+        .toString(16)
+        .padStart(2, "0")} (${currentMode}).`,
+    );
+
+    // Step 2: write the bitmap to 0xC008. The 8-byte header at 0xC000 is
+    // preserved automatically — briand's PY25Q16_WriteBuffer caches the
+    // whole 4 KiB sector before erase/reprogram, so untouched bytes
+    // round-trip through cache. (We do NOT write to 0xC000-0xC007 ourselves.)
+    const packed = packPageMajor(previewBitmap);
+
+    // Persist the backup snapshot NOW, before any write. If any step below
+    // fails (write timeout, verify mismatch, mode-flip failure), Restore
+    // still has the original bytes to revert with. Without this, a
+    // mid-write failure would lose the original bitmap entirely — the
+    // radio's copy is overwritten and we'd never have written ours to disk.
+    const snapshotFields = {
+      firmwareVersion,
+      originalBitmapB64: bytesToBase64(originalBitmap),
+      originalModeBlockB64: bytesToBase64(originalModeBlock),
+      writtenBytesB64: bytesToBase64(packed),
+      callsign: callsign.trim().toUpperCase(),
+      bkgNum: Number.parseInt(bkgNumText, 10),
+      invert,
+      capturedAt: new Date().toISOString(),
+    };
+    save({ phase: "saved", ...snapshotFields });
+    pushLog("Backup snapshot persisted. Restore is now available if anything below fails.");
+
+    // Largest data payload that fits in the firmware's 256-byte UART
+    // buffer alongside the WRITE_EEPROM framing + 12-byte header. 248
+    // overflows and the firmware rejects the frame silently. See
+    // session.ts writeEeprom for the full derivation.
+    const CHUNK = 0xe8; // 232 bytes
+    const chunkCount = Math.ceil(packed.length / CHUNK);
+    pushLog(
+      `Writing badge to 0x${BOOT_LOGO_BITMAP_ADDR.toString(16)} in ` +
+        `${chunkCount} chunks of up to ${CHUNK} bytes. Each chunk triggers ` +
+        `up to 31 flash sector erases — expect 10-60 s per chunk. ` +
+        `Per-chunk timeout: ${BITMAP_WRITE_TIMEOUT_MS / 1000} s. Do not unplug.`,
     );
 
     try {
-      await session.writeEeprom(BOOT_LOGO_ADDR, packed, { timeoutMs: WRITE_TIMEOUT_MS });
+      for (let i = 0; i < chunkCount; i++) {
+        const offset = i * CHUNK;
+        const size = Math.min(CHUNK, packed.length - offset);
+        const t0 = Date.now();
+        pushLog(`  chunk ${i + 1}/${chunkCount}: writing ${size} bytes at 0x${(BOOT_LOGO_BITMAP_ADDR + offset).toString(16)}…`);
+        await session.writeEeprom(
+          BOOT_LOGO_BITMAP_ADDR + offset,
+          packed.subarray(offset, offset + size),
+          { timeoutMs: BITMAP_WRITE_TIMEOUT_MS },
+        );
+        pushLog(`  chunk ${i + 1}/${chunkCount}: done in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+      }
     } catch (err) {
       pushLog(
-        `Write call failed (${err instanceof Error ? err.message : String(err)}). ` +
+        `Write failed (${err instanceof Error ? err.message : String(err)}). ` +
           `Reading back for diagnostic…`,
       );
       try {
-        const diag = await session.readEeprom(BOOT_LOGO_ADDR, BOOT_LOGO_SIZE);
+        const diag = await session.readEeprom(BOOT_LOGO_BITMAP_ADDR, BOOT_LOGO_SIZE);
         if (bytesEq(diag, packed)) {
-          pushLog("Diagnostic read: badge IS present. Write landed; reply lost/slow.");
-        } else if (bytesEq(diag, original)) {
-          pushLog(
-            "Diagnostic read: still original bytes. Write was rejected (region may be write-protected on this firmware build — same behavior as stock K1).",
-          );
+          pushLog("Diagnostic: badge IS present. Reply was lost; treating as success.");
+        } else if (bytesEq(diag, originalBitmap)) {
+          pushLog("Diagnostic: still original bytes. Write was rejected at flash level.");
         } else {
           pushLog(
-            `Diagnostic read: partial. hash=${shortHash(diag)}. ` +
-              `Matching prefix=${countMatchingPrefix(diag, packed)} bytes.`,
+            `Diagnostic: partial write. hash=${shortHash(diag)}, ` +
+              `matching prefix=${countMatchingPrefix(diag, packed)} bytes.`,
           );
         }
       } catch (readErr) {
@@ -213,27 +307,42 @@ export function SplashFlasherPanel() {
       throw err;
     }
 
-    pushLog(`Reading back 0x${BOOT_LOGO_ADDR.toString(16)} to verify…`);
-    const readback = await session.readEeprom(BOOT_LOGO_ADDR, BOOT_LOGO_SIZE);
+    pushLog(`Reading back 0x${BOOT_LOGO_BITMAP_ADDR.toString(16)} to verify bitmap…`);
+    const readback = await session.readEeprom(BOOT_LOGO_BITMAP_ADDR, BOOT_LOGO_SIZE);
     if (!bytesEq(readback, packed)) {
       throw new Error(
-        `Read-back mismatch (${countMatchingPrefix(readback, packed)} of ${packed.length} bytes match prefix). ` +
-          `Write did not land cleanly.`,
+        `Bitmap read-back mismatch (${countMatchingPrefix(readback, packed)} of ` +
+          `${packed.length} bytes match prefix). Write did not land cleanly.`,
       );
     }
-    pushLog("Read-back matches. Power-cycle or click Reboot to see the new splash.");
+    pushLog("Bitmap verified.");
 
-    const num = Number.parseInt(bkgNumText, 10);
-    save({
-      phase: "written",
-      firmwareVersion,
-      originalBytesB64: bytesToBase64(original),
-      writtenBytesB64: bytesToBase64(packed),
-      callsign: callsign.trim().toUpperCase(),
-      bkgNum: num,
-      invert,
-      capturedAt: new Date().toISOString(),
-    });
+    // Step 3: flip POWER_ON_DISPLAY_MODE to LOGO (0x04). Read-modify-write
+    // the 8-byte settings block so we don't clobber the 7 other settings.
+    if (currentMode === MODE_LOGO) {
+      pushLog("Mode is already LOGO (0x04). Skipping settings write.");
+    } else {
+      const newModeBlock = new Uint8Array(originalModeBlock);
+      newModeBlock[MODE_BYTE_INDEX] = MODE_LOGO;
+      pushLog(
+        `Writing settings block to flip POWER_ON_DISPLAY_MODE → 0x${MODE_LOGO.toString(16).padStart(2, "0")} (LOGO)…`,
+      );
+      await session.writeEeprom(MODE_BLOCK_ADDR, newModeBlock, {
+        timeoutMs: SETTINGS_WRITE_TIMEOUT_MS,
+      });
+      pushLog(`Verifying settings block…`);
+      const modeReadback = await session.readEeprom(MODE_BLOCK_ADDR, MODE_BLOCK_LEN);
+      if (modeReadback[MODE_BYTE_INDEX] !== MODE_LOGO) {
+        throw new Error(
+          `Mode-byte verify mismatch. Wrote 0x${MODE_LOGO.toString(16)}, read back ` +
+            `0x${modeReadback[MODE_BYTE_INDEX]!.toString(16)}. ` +
+            `Bitmap is written but mode flip failed; original mode preserved in snapshot.`,
+        );
+      }
+      pushLog("Mode set to LOGO. Reboot to see the BKG splash.");
+    }
+
+    save({ phase: "written", ...snapshotFields });
   }
 
   async function rebootRadio() {
@@ -245,9 +354,7 @@ export function SplashFlasherPanel() {
   function reportChanged() {
     if (!persisted) return;
     save({ ...persisted, phase: "reported-changed" });
-    pushLog(
-      `Reported: splash CHANGED. Firmware reads from 0x${BOOT_LOGO_ADDR.toString(16)}.`,
-    );
+    pushLog(`Reported: splash CHANGED. BKG bitmap is live on boot.`);
   }
 
   function reportUnchanged() {
@@ -256,21 +363,54 @@ export function SplashFlasherPanel() {
     pushLog(
       `Reported: splash UNCHANGED. Possibilities: ` +
         `(a) wrong polarity — try the invert toggle and re-flash; ` +
-        `(b) wrong base address — boot logo may live somewhere else in 0xC000-0xCFFF; ` +
-        `(c) firmware caches or expects a different byte layout.`,
+        `(b) firmware build doesn't have ENABLE_FEAT_F4HWN_LOGO compiled in (check version string vs NR7Y v1.0.0+); ` +
+        `(c) mode byte didn't actually take (read back 0x00A0AF and check it equals 0x04).`,
     );
   }
 
   async function restoreOriginal() {
     if (!session || !persisted) throw new Error("not ready");
-    const original = base64ToBytes(persisted.originalBytesB64);
-    pushLog(`Restoring original bytes to 0x${BOOT_LOGO_ADDR.toString(16)}…`);
-    await session.writeEeprom(BOOT_LOGO_ADDR, original, { timeoutMs: WRITE_TIMEOUT_MS });
-    const readback = await session.readEeprom(BOOT_LOGO_ADDR, BOOT_LOGO_SIZE);
-    if (!bytesEq(readback, original)) {
-      throw new Error("Restore verify failed. Original bytes still stored in localStorage.");
+    const originalBitmap = base64ToBytes(persisted.originalBitmapB64);
+    const originalModeBlock = base64ToBytes(persisted.originalModeBlockB64);
+
+    pushLog(
+      `Restoring original bitmap to 0x${BOOT_LOGO_BITMAP_ADDR.toString(16)} (slow)…`,
+    );
+    {
+      const CHUNK = 0xe8; // 232 bytes — see WRITE_EEPROM buffer-size note above
+      const chunkCount = Math.ceil(originalBitmap.length / CHUNK);
+      for (let i = 0; i < chunkCount; i++) {
+        const offset = i * CHUNK;
+        const size = Math.min(CHUNK, originalBitmap.length - offset);
+        const t0 = Date.now();
+        pushLog(`  chunk ${i + 1}/${chunkCount}: writing ${size} bytes…`);
+        await session.writeEeprom(
+          BOOT_LOGO_BITMAP_ADDR + offset,
+          originalBitmap.subarray(offset, offset + size),
+          { timeoutMs: BITMAP_WRITE_TIMEOUT_MS },
+        );
+        pushLog(`  chunk ${i + 1}/${chunkCount}: done in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+      }
     }
-    pushLog("Restore verified. Power-cycle to confirm splash is back to original.");
+    const bitmapReadback = await session.readEeprom(BOOT_LOGO_BITMAP_ADDR, BOOT_LOGO_SIZE);
+    if (!bytesEq(bitmapReadback, originalBitmap)) {
+      throw new Error(
+        "Bitmap restore verify failed. Snapshot preserved in localStorage; retry.",
+      );
+    }
+    pushLog("Bitmap restored.");
+
+    pushLog(`Restoring original settings block to 0x${MODE_BLOCK_ADDR.toString(16)}…`);
+    await session.writeEeprom(MODE_BLOCK_ADDR, originalModeBlock, {
+      timeoutMs: SETTINGS_WRITE_TIMEOUT_MS,
+    });
+    const modeReadback = await session.readEeprom(MODE_BLOCK_ADDR, MODE_BLOCK_LEN);
+    if (!bytesEq(modeReadback, originalModeBlock)) {
+      throw new Error("Settings block restore verify failed.");
+    }
+    pushLog(
+      `Settings restored. POWER_ON_DISPLAY_MODE back to 0x${originalModeBlock[MODE_BYTE_INDEX]!.toString(16).padStart(2, "0")}. Reboot to confirm.`,
+    );
     save({ ...persisted, phase: "restored" });
   }
 
@@ -297,38 +437,38 @@ export function SplashFlasherPanel() {
       <h2 style={{ margin: 0, fontSize: 18 }}>BKG splash flasher (uv-k1-f4hwn-nr7y)</h2>
       <p style={{ color: "var(--muted)", marginTop: 4 }}>
         Renders a 128×64 BKG badge from your callsign + BKG number and writes
-        it to the boot logo region at <code>0x{BOOT_LOGO_ADDR.toString(16)}</code>{" "}
-        ({BOOT_LOGO_SIZE} bytes, page-major LSB-top). Backs up the existing
-        bytes first so Restore can put things back.
+        it to the bitmap region at{" "}
+        <code>0x{BOOT_LOGO_BITMAP_ADDR.toString(16)}</code>{" "}
+        ({BOOT_LOGO_SIZE} bytes, page-major LSB-top). Then flips{" "}
+        <code>POWER_ON_DISPLAY_MODE</code> to <em>LOGO</em> (0x
+        {MODE_LOGO.toString(16).padStart(2, "0")}) so the firmware actually
+        renders it on boot. Backs up the previous bitmap + mode-byte first
+        so Restore can revert.
       </p>
 
       <div
         style={{
           marginTop: 12,
           padding: 10,
-          border: "1px solid #c0392b",
-          background: "rgba(192, 57, 43, 0.10)",
+          border: "1px solid #b88a00",
+          background: "rgba(184, 138, 0, 0.08)",
           borderRadius: 6,
           fontSize: 13,
         }}
       >
-        <strong>This write path is blocked on most NR7Y builds.</strong>{" "}
-        briand <em>does</em> have a bitmap-splash code path at{" "}
-        <code>ui/welcome.c:247-259</code>: when{" "}
-        <code>POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_LOGO</code>, it
-        reads a 128×64 bitmap from physical{" "}
-        <code>0x011008</code> (= virtual <code>0xC008</code>, after an
-        8-byte header). However: (1) it&apos;s gated on{" "}
-        <code>#ifdef ENABLE_FEAT_F4HWN_LOGO</code>, which may or may not be
-        set in the build you flashed; (2) protocol-level writes to{" "}
-        <code>0x{BOOT_LOGO_ADDR.toString(16)}</code> hit briand&apos;s
-        per-8-byte sector-erase amplification — each 8-byte sub-write
-        triggers a fresh 4 KiB erase + reprogram when the existing sector
-        has non-<code>0xFF</code> data, which makes a 248-byte chunk take
-        ~10 s and times out our request. Even if the build has the LOGO
-        feature, the write needs a multi-minute timeout to land. Fix is
-        firmware-side: a contiguous bitmap write path that erases once
-        and programs the sector in bulk.
+        <strong>Slow write — be patient.</strong> briand&apos;s{" "}
+        <code>PY25Q16_WriteBuffer</code> erases + reprograms the full 4 KiB
+        flash sector on every 8-byte sub-write where the cache has any
+        non-<code>0xFF</code> byte. Overwriting the MINI KONG bitmap is 128
+        sub-writes split across 5 protocol chunks. Observed on real K1
+        hardware: each chunk can take up to ~60 s; the full write may run{" "}
+        <strong>2-5 minutes</strong>. Per-chunk timeout is{" "}
+        {(BITMAP_WRITE_TIMEOUT_MS / 1000).toFixed(0)} s; progress is logged
+        chunk-by-chunk so you can see it isn&apos;t stuck. Do not unplug
+        or power-cycle the radio while writing. Confirmed against{" "}
+        <code>App/driver/py25q16.c:253-332</code> +{" "}
+        <code>App/driver/eeprom_compat.c:100-119</code>. A firmware-side
+        bulk-write opcode would collapse this to ~1 s; see CLAUDE.md.
       </div>
 
       {templateError ? (
@@ -345,19 +485,17 @@ export function SplashFlasherPanel() {
           borderRadius: 6,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <strong style={{ fontSize: 13 }}>Probe (non-destructive)</strong>
           <button onClick={() => runStep(probeRead)} disabled={busy}>
-            Read 0x{BOOT_LOGO_ADDR.toString(16)} + preview
+            Read 0x{BOOT_LOGO_BITMAP_ADDR.toString(16)} + preview
           </button>
         </div>
         <p style={{ marginTop: 6, marginBottom: 0, fontSize: 12, color: "var(--muted)" }}>
-          Reads the 1024 bytes at the boot logo address and renders them
-          both as page-major LSB-top bitmaps. If <em>either</em> rendering
-          looks like a recognizable logo, the address + layout are right
-          and the only barrier is write-protection. If both look like
-          noise, the bitmap lives somewhere else (or in a different byte
-          format) on this firmware.
+          Reads the 1024 bytes at the bitmap address (skipping the 8-byte
+          header at <code>0x{BOOT_LOGO_HEADER_ADDR.toString(16)}</code>) and
+          renders them in both polarities. On a fresh NR7Y radio you should
+          see briand&apos;s MINI KONG / BIG MINI KONG default logo here.
         </p>
         {probeBytesB64 ? (
           <div
@@ -474,9 +612,10 @@ export function SplashFlasherPanel() {
           onClick={() => runStep(restoreOriginal)}
           disabled={
             busy ||
-            (phase !== "reported-changed" &&
-              phase !== "reported-unchanged" &&
-              phase !== "written")
+            (phase !== "saved" &&
+              phase !== "written" &&
+              phase !== "reported-changed" &&
+              phase !== "reported-unchanged")
           }
         >
           4. Restore original
@@ -531,8 +670,20 @@ export function SplashFlasherPanel() {
         <details style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
           <summary>Diagnostics</summary>
           <p>
-            Original hash:{" "}
-            <code>{shortHash(base64ToBytes(persisted.originalBytesB64))}</code>
+            Original bitmap hash:{" "}
+            <code>{shortHash(base64ToBytes(persisted.originalBitmapB64))}</code>
+            <br />
+            Original mode block:{" "}
+            <code>
+              {Array.from(base64ToBytes(persisted.originalModeBlockB64), (b) =>
+                b.toString(16).padStart(2, "0"),
+              ).join("")}
+            </code>{" "}
+            (POWER_ON_DISPLAY_MODE = 0x
+            {base64ToBytes(persisted.originalModeBlockB64)[MODE_BYTE_INDEX]!
+              .toString(16)
+              .padStart(2, "0")}
+            )
             <br />
             Written hash:{" "}
             <code>{shortHash(base64ToBytes(persisted.writtenBytesB64))}</code>
@@ -645,7 +796,8 @@ function isValidPersisted(x: unknown): x is PersistedState {
   return (
     typeof o.phase === "string" &&
     typeof o.firmwareVersion === "string" &&
-    typeof o.originalBytesB64 === "string" &&
+    typeof o.originalBitmapB64 === "string" &&
+    typeof o.originalModeBlockB64 === "string" &&
     typeof o.writtenBytesB64 === "string" &&
     typeof o.callsign === "string" &&
     typeof o.bkgNum === "number" &&
