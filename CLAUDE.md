@@ -348,6 +348,20 @@ Don't guess at them; capture from real radios.
      them requires either grepping the briand fork for
      `SETTINGS_Save*` calls touching them, or a BEFORE/AFTER backup
      diff after changing a CW menu value. Self-test verdict pending.
+
+     **`ENABLE_FEAT_F4HWN_LOGO` is NOT enabled by default in the CW
+     preset that produces NR7Y v1.0.0.** Only the Fusion preset
+     overrides the default to ON. With LOGO off, the welcome.c
+     bitmap-render block (`#ifdef ENABLE_FEAT_F4HWN_LOGO`) is
+     compiled out, so setting `POWER_ON_DISPLAY_MODE = 4`
+     (POWER_ON_DISPLAY_MODE_LOGO) does nothing on boot — the firmware
+     silently falls through and skips the splash entirely. Writes to
+     virtual 0xC008 still land in physical 0x011000 (sector 17) just
+     fine (verified empirically 2026-05-25), but the bytes are never
+     drawn. To get a working bitmap splash, the firmware must be
+     rebuilt with `-DENABLE_FEAT_F4HWN_LOGO=ON`. `bkg-programmer`
+     hosts a pre-built such firmware in `public/firmware/` (see
+     `docs/plans/2026-05-25-bitmap-splash-phases.md`).
    - **Stock UV-K5 V1/V2**, **egzumer**, **F4HWN-on-K5-V1**: still
      need real captures.
 

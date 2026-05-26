@@ -35,13 +35,45 @@ the limit, which is why the bug stayed hidden until we tried a
 
 `/Users/jsvana/projects/uv-k1-k5v3-firmware-custom` branch
 `bkg/logo-relocation-phase1` commit `7554c349` repoints the boot logo
-from physical sector 17 to sector 11 (so writes go to a fresh sector
-with no erase amplification). **No longer required**, because the
-host-side chunk fix makes sector 17 writable too (just ~10× slower per
-write due to erase amplification: each 8-byte sub-write triggers a full
-4 KB sector erase + reprogram when the sector has non-`0xFF` content).
+from physical sector 17 to sector 11. **No longer required**, because
+the host-side chunk fix makes sector 17 writable too. Kept as a
+record. Not landed on main. Don't distribute.
 
-Kept as a record. Not landed on main. Don't distribute.
+## BUT we still need a custom firmware build, just for a different reason
+
+Stock NR7Y v1.0.0 is built from the CW preset, which does NOT enable
+`ENABLE_FEAT_F4HWN_LOGO` — only the Fusion preset overrides the
+default to ON. With LOGO off, the `welcome.c:247-259` bitmap-render
+block is `#ifdef`'d out at compile time. Writes to virtual 0xC008
+still land in physical 0x011000 just fine (sector 17 is empirically
+writable from the runtime), but setting `POWER_ON_DISPLAY_MODE = 4`
+does nothing on boot — the firmware skips the splash entirely.
+
+Confirmed empirically 2026-05-25 by flashing stock NR7Y v1.0.0,
+writing a BKG bitmap to 0xC008 (took 5×0.1 s with the chunk fix, no
+erase amplification on this radio's fresh sector 17), flipping mode
+to LOGO, rebooting — splash was blank.
+
+**Fix**: build the same CW preset with `-DENABLE_FEAT_F4HWN_LOGO=ON`
+added. Identical to NR7Y v1.0.0 except the LOGO render path is
+compiled in. We host this at
+`public/firmware/nr7y.cw-bkg-logo.v1.0.0.bin` (88,856 bytes, built
+from upstream main of the briand fork on 2026-05-25). The 1-byte
+identifier this firmware emits via hello is still `NR7Y v1.0.0` —
+not distinguishable from stock NR7Y over the protocol, only by
+behavior (does the splash actually display).
+
+## End state for BKG members
+
+1. Flash `public/firmware/nr7y.cw-bkg-logo.v1.0.0.bin` via UVTools
+   (DFU mode: hold PTT alone while powering on the K1).
+2. Connect bkg-programmer.
+3. Enter callsign + BKG number in the splash flasher panel.
+4. "Backup + write badge" → ~0.5 s end-to-end.
+5. Reboot the radio. BKG badge displays.
+
+If they're already on stock NR7Y, step 1 is required; the chunk fix
+in bkg-programmer is necessary but not sufficient.
 
 ## What about Phase 2 (in-browser DFU flasher)
 
