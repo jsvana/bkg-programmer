@@ -4,8 +4,10 @@ import { SelfTestPanel } from "./SelfTestPanel";
 import { BackupPanel } from "./BackupPanel";
 import { WritePanel } from "./WritePanel";
 import { ConfigPanel } from "./ConfigPanel";
+import { SplashFlasherPanel } from "./SplashFlasherPanel";
 import { SplashTestPanel } from "./SplashTestPanel";
 import { StockFirmwareGuide } from "./StockFirmwareGuide";
+import { WelcomeStringsPanel } from "./WelcomeStringsPanel";
 
 export default function Home() {
   return (
@@ -30,6 +32,8 @@ export default function Home() {
       <ConfigPanel />
       <BackupPanel />
       <SplashTestPanel />
+      <WelcomeStringsPanel />
+      <SplashFlasherPanel />
     </main>
   );
 }

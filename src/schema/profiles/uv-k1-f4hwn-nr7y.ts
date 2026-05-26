@@ -1,4 +1,4 @@
-import type { Profile } from '../types';
+import type { BlockModuleDef, Profile } from '../types';
 import {
   channelRecord,
   channelName,
@@ -6,6 +6,18 @@ import {
   calibration,
   f4hwnSettings,
 } from '../modules/index';
+
+/** Opaque read-only block — no field interpretation, just bytes for probing. */
+function probeBlock(id: string, baseOffset: number, size: number): BlockModuleDef {
+  return {
+    kind: 'block',
+    id,
+    baseOffset,
+    size,
+    fields: [],
+    readOnly: true,
+  };
+}
 
 export const uvK1F4hwnNr7y: Profile = {
   id: 'uv-k1-f4hwn-nr7y',
@@ -43,6 +55,21 @@ export const uvK1F4hwnNr7y: Profile = {
     },
     { binding: { moduleId: 'calibration', baseOffset: 0xB000 } },
     { binding: { moduleId: 'f4hwn_settings', baseOffset: 0xA158 } },
+    // Boot logo region per briand's eeprom_compat.c virtual mapping
+    // (0xC000-0xCFFF, 4 KiB). Hardware probe 2026-05-25 confirmed: this
+    // region IS read-mapped on K1+NR7Y and contains a coherent briand-
+    // default "MINI KONG" 128x64 bitmap, page-major LSB-top layout.
+    //
+    // **The firmware does not display this bitmap.** F4HWN base (armel/
+    // uv-k5-firmware-custom ui/welcome.c:50-210, what NR7Y is built on)
+    // has a text-only welcome routine and never reads a bitmap. The bytes
+    // here are inherited from briand and never rendered. Standard 0x051D
+    // WRITE_EEPROM to this region is silently dropped (10s timeout, no
+    // reply — same pattern as stock K1's 0x2E00).
+    //
+    // Kept as a probe block so future patched firmware that reads from
+    // 0xC000 can be supported without re-discovering the address.
+    probeBlock('boot_logo', 0xC000, 0x1000),
   ],
   notes:
     'F4HWN settings at 0xA158 are V3/K1-specific. Maps to PY25Q16 flash 0x00A158. ' +

@@ -73,6 +73,81 @@ users will follow.
 Source: empirical (no official docs). UVTools2 and briand/armel READMEs
 all say "put radio in DFU mode" without specifying the K1 combo.
 
+### K1+briand: welcome strings + display-mode live at PHYSICAL addresses, not V1-style logical ones
+
+The naive port of F4HWN's V1 welcome code uses logical addresses
+`0x0EB0`/`0x0EC0`/`0x0E90`. **These are wrong on K1+briand.** briand's
+`App/ui/welcome.c:278-281` and `App/settings.c:255,265` use
+`PY25Q16_ReadBuffer` calls directly with **physical** flash addresses,
+bypassing the `eeprom_compat.c` `AddrTranslate` layer:
+
+```c
+PY25Q16_ReadBuffer(0x00A0C8, WelcomeString0, 16);     // welcome 1
+PY25Q16_ReadBuffer(0x00A0D8, WelcomeString1, 16);     // welcome 2
+PY25Q16_ReadBuffer(0x00A0A8, Data, 8);                // settings block;
+                                                       // Data[7] = POWER_ON_DISPLAY_MODE
+```
+
+To target those physical bytes via the `WRITE_EEPROM` (`0x051D`) protocol,
+use the virtual addresses that `AddrTranslate` maps identity-onto inside
+the settings region — `eeprom_compat.c:56`:
+
+```
+_MK_MAPPING(0x00A000, 0x00A000, 0x00A170)  // virt == phys for 0x00A000..0x00A170
+```
+
+So write to virtual `0x00A0C8` / `0x00A0D8` / `0x00A0A8` (NOT the V1 ones).
+
+Hardware-confirmed 2026-05-25 that V1-style addresses *do* read/write
+successfully at the protocol level on K1+briand, but they land in the
+channels region — the firmware never reads them. Verify-after-write
+passes; boot screen is unchanged. The fix is the address constants in
+`app/WelcomeStringsPanel.tsx`, not the firmware.
+
+### F4HWN/NR7Y boot splash mechanics
+
+Two paths exist in the firmware, both gated by `POWER_ON_DISPLAY_MODE`
+(byte 7 of the 8-byte settings block at physical `0x00A0A8`):
+
+**Text path** (F4HWN base + briand). `ui/welcome.c:274+`. Modes `NONE`
+or `SOUND` → black screen. Others read welcome 0/1 from physical
+`0x00A0C8`/`0x00A0D8` and render them, plus the baked-in `Version` /
+`Edition` strings. Only `ALL` (0x00) and `MESSAGE` (0x02) preserve
+user-set strings — `VOLTAGE` (0x03) unconditionally overwrites both
+strings with "VOLTAGE" / `"x.xxV xx%"`.
+
+**Bitmap path** (briand only, behind `#ifdef ENABLE_FEAT_F4HWN_LOGO`).
+`ui/welcome.c:247-259`. Mode `POWER_ON_DISPLAY_MODE_LOGO` reads 1024
+bytes from physical `0x011008` (= virtual `0xC008`, after an 8-byte
+header reserved for "future magic/version/flags") and blits directly
+to status line + frame buffer. The bitmap format is **ST7565-native:
+8 pages × 128 columns, column-major LSB-top** — the convention our
+`src/splash/bitmap.ts` already produces.
+
+**Why protocol writes to the bitmap region are effectively blocked.**
+briand's `PY25Q16_WriteBuffer` (`driver/py25q16.c:253-332`) caches the
+target 4 KiB sector, and on every write where new data differs from
+cache AND the cache contains any non-`0xFF` byte, it erases the whole
+sector and reprograms it. `eeprom_compat.c:100` calls this from
+`EEPROM_WriteBuffer` in 8-byte chunks, and `app/uart.c:458-470` loops
+those 8-byte chunks for the 0x051D command. Result: writing a 248-byte
+chunk over the existing MINI KONG default bitmap triggers 31 × ~300 ms
+sector erases ≈ 10 s, which beats our protocol timeout. A working write
+needs either (a) a per-write timeout bumped to ~90 s/chunk, (b) firmware
+that batches the bitmap write into a single sector-erase + bulk program,
+or (c) a custom opcode that takes the whole 1024 bytes at once.
+
+**Path to a real custom bitmap splash on NR7Y:**
+
+1. Confirm `ENABLE_FEAT_F4HWN_LOGO` is set in the NR7Y build (or
+   re-enable in a fork).
+2. Add a value to `POWER_ON_DISPLAY_MODE` enum (already exists in briand —
+   `POWER_ON_DISPLAY_MODE_LOGO`, value 4 per usual ordering).
+3. Either bump `bkg-programmer`'s write timeout for `0xC000-0xCFFF` to
+   ≥ 90 s, or patch `app/uart.c` (or `eeprom_compat.c`) to add a
+   bulk-bitmap opcode that does one erase + program.
+4. Set `POWER_ON_DISPLAY_MODE = LOGO` (write to physical `0x00A0AF`).
+
 ### Stock K1 has read-mapped, write-protected regions
 
 Distinct from "unmapped" above: stock K1 v7.03.01 maps `0x2E00`
