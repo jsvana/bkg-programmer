@@ -23,7 +23,7 @@ export function ConnectPanel() {
       <h2 style={{ margin: 0, fontSize: 18 }}>Connect</h2>
 
       {state.kind === "unsupported" ? (
-        <UnsupportedNotice />
+        <UnsupportedNotice reason={state.reason} />
       ) : state.kind === "connected" ? (
         <ConnectedView result={state.result} onDisconnect={disconnect} />
       ) : (
@@ -33,7 +33,23 @@ export function ConnectPanel() {
   );
 }
 
-function UnsupportedNotice() {
+function UnsupportedNotice({ reason }: { reason: "no-api" | "insecure-context" }) {
+  if (reason === "insecure-context") {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <p style={{ color: "var(--muted)" }}>
+          The Web Serial API only exposes <code>navigator.serial</code> in a
+          secure context. This page is loaded over plain HTTP — Chrome hides
+          the API and the rail reports it as unsupported even though your
+          browser is fine.
+        </p>
+        <p style={{ color: "var(--muted)", marginTop: 8 }}>
+          Reload over <code>https://</code> (same host) or run a local copy
+          at <code>http://localhost</code> — both count as secure contexts.
+        </p>
+      </div>
+    );
+  }
   return (
     <div style={{ marginTop: 12 }}>
       <p style={{ color: "var(--muted)" }}>

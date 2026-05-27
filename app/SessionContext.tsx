@@ -16,7 +16,7 @@ import { detect, type DetectionResult } from "../src/detection/detect";
 
 export type ConnState =
   | { kind: "idle" }
-  | { kind: "unsupported" }
+  | { kind: "unsupported"; reason: "no-api" | "insecure-context" }
   | { kind: "connecting" }
   | { kind: "connected"; result: DetectionResult; session: Session; transport: WebSerialTransport }
   | { kind: "error"; message: string };
@@ -35,8 +35,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const liveSessionRef = useRef<Session | null>(null);
 
   useEffect(() => {
-    if (typeof navigator === "undefined" || !("serial" in navigator)) {
-      setState({ kind: "unsupported" });
+    if (typeof navigator === "undefined") return;
+    // Web Serial is a secure-context API. On Chromium-family browsers
+    // served over plain HTTP, `navigator.serial` is undefined — the
+    // same shape as on Firefox/Safari which lack the API entirely.
+    // Distinguish the two so the rail can tell users the actual fix.
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setState({ kind: "unsupported", reason: "insecure-context" });
+      return;
+    }
+    if (!("serial" in navigator)) {
+      setState({ kind: "unsupported", reason: "no-api" });
     }
   }, []);
 

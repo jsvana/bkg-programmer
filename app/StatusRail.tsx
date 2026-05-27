@@ -13,15 +13,20 @@ export function StatusRail() {
   const { state, connect, disconnect } = useSession();
 
   if (state.kind === "unsupported") {
+    const insecure = state.reason === "insecure-context";
     return (
       <div className="rail">
         <span className="rail-light err" aria-hidden />
         <span className="rail-field">
-          <span className="rail-field-label">browser</span>
-          <span>web serial unsupported</span>
+          <span className="rail-field-label">
+            {insecure ? "connection" : "browser"}
+          </span>
+          <span>{insecure ? "https required" : "web serial unsupported"}</span>
         </span>
         <span className="rail-field" style={{ color: "var(--fg-muted)" }}>
-          use Chrome, Edge, or another Chromium-based desktop browser
+          {insecure
+            ? "Web Serial only works on https:// (or localhost). Reload over HTTPS."
+            : "use Chrome, Edge, or another Chromium-based desktop browser"}
         </span>
       </div>
     );
