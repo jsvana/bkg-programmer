@@ -95,6 +95,11 @@ export const channelRecord: StructTemplate = {
     {
       id: 'modulation',
       label: 'Modulation',
+      description:
+        'Channel modulation. CW requires firmware built with ' +
+        'ENABLE_CW_MODULATOR (NR7Y CW preset on briand). BYP/RAW require ' +
+        'ENABLE_BYP_RAW_DEMODULATORS. On firmware lacking the feature, ' +
+        'the value is stored but the radio falls back to FM at runtime.',
       group: 'ch.mod',
       type: {
         kind: 'enum',
@@ -102,6 +107,9 @@ export const channelRecord: StructTemplate = {
           { value: 0, label: 'FM' },
           { value: 1, label: 'AM' },
           { value: 2, label: 'USB' },
+          { value: 3, label: 'CW' },
+          { value: 4, label: 'BYP' },
+          { value: 5, label: 'RAW' },
         ],
       },
       location: { kind: 'bits', offset: 11, bitOffset: 4, bitWidth: 4 },
@@ -132,32 +140,51 @@ export const channelRecord: StructTemplate = {
     {
       id: 'tx_power',
       label: 'TX Power',
+      description:
+        '3-bit OUTPUT_POWER. Firmware enum in App/settings.h:133-140. ' +
+        'Byte-12 layout per briand App/settings.c:1228 ' +
+        '(pVFO->OUTPUT_POWER << 2).',
       group: 'ch.tx',
       type: {
         kind: 'enum',
         values: [
-          { value: 0, label: 'Low' },
-          { value: 1, label: 'Mid' },
-          { value: 2, label: 'High' },
+          { value: 0, label: 'User' },
+          { value: 1, label: 'Low1' },
+          { value: 2, label: 'Low2' },
+          { value: 3, label: 'Low3' },
+          { value: 4, label: 'Low4' },
+          { value: 5, label: 'Low5' },
+          { value: 6, label: 'Mid' },
+          { value: 7, label: 'High' },
         ],
       },
-      location: { kind: 'bits', offset: 12, bitOffset: 2, bitWidth: 2 },
+      location: { kind: 'bits', offset: 12, bitOffset: 2, bitWidth: 3 },
       applyMode: 'reload-settings',
     },
     {
       id: 'busy_lock',
       label: 'Busy Channel Lock',
+      description:
+        'Single bit per briand App/settings.c:1227 ' +
+        '(pVFO->BUSY_CHANNEL_LOCK << 5).',
       group: 'ch.tx',
-      type: {
-        kind: 'enum',
-        values: [
-          { value: 0, label: 'Off' },
-          { value: 1, label: 'Carrier' },
-          { value: 2, label: 'CTCSS/DCS' },
-        ],
-      },
-      location: { kind: 'bits', offset: 12, bitOffset: 4, bitWidth: 4 },
+      type: { kind: 'bool' },
+      location: { kind: 'bits', offset: 12, bitOffset: 5, bitWidth: 1 },
       applyMode: 'reload-settings',
+    },
+    {
+      id: 'tx_lock',
+      label: 'TX Lock',
+      description:
+        'Disables transmission on this channel. On F4HWN with ' +
+        'ENABLE_EXTRA_FILTER, this bit doubles as the NARROWEST flag ' +
+        'when modulation is CW or USB (see briand App/settings.c:1219-' +
+        '1226). For non-CW/USB channels, the bit is plain TX_LOCK.',
+      group: 'ch.tx',
+      type: { kind: 'bool' },
+      location: { kind: 'bits', offset: 12, bitOffset: 6, bitWidth: 1 },
+      applyMode: 'reload-settings',
+      requires: ['ENABLE_FEAT_F4HWN'],
     },
     {
       id: 'dtmf_decoding',

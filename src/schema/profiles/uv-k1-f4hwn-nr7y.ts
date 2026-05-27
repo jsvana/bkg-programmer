@@ -5,6 +5,7 @@ import {
   channelAttrsV3,
   calibration,
   f4hwnSettings,
+  nr7yCwSettings,
 } from '../modules/index';
 
 /** Opaque read-only block — no field interpretation, just bytes for probing. */
@@ -55,6 +56,11 @@ export const uvK1F4hwnNr7y: Profile = {
     },
     { binding: { moduleId: 'calibration', baseOffset: 0xB000 } },
     { binding: { moduleId: 'f4hwn_settings', baseOffset: 0xA158 } },
+    // NR7Y CW-modulator settings. 8 bytes at virtual 0xA140
+    // (identity-mapped to physical 0x00A140 via briand
+    // eeprom_compat.c:56). Layout verified against
+    // App/settings.c:358-369 (read) and :1065-1081 (write).
+    { binding: { moduleId: 'nr7y_cw_settings', baseOffset: 0xA140 } },
     // Boot logo region per briand's eeprom_compat.c virtual mapping
     // (0xC000-0xCFFF, 4 KiB). Hardware probe 2026-05-25 confirmed: this
     // region IS read-mapped on K1+NR7Y and contains a coherent briand-
@@ -82,16 +88,16 @@ export const uvK1F4hwnNr7y: Profile = {
     '(F4HWN block starts at 0xA158), calibration 0xB000-0xB1FF (512 bytes, ' +
     'physically remapped to flash 0x010000), boot logo 0xC000-0xCFFF. ' +
     '\n\n' +
-    'NR7Y CW mod additions (CW_TONE_FREQUENCY, CW_SIDETONE_LEVEL, ' +
-    'CW_KEYER_MODE, CW_KEY_WPM, CW_KEY_INPUT, CW_KEY_INPUT_MENU, ' +
-    'CW_BREAKIN_ENABLE, CW_MESSAGE_REPEAT_DELAY) are present in the ' +
-    'EEPROM_Config_t struct in App/settings.h but their concrete EEPROM ' +
-    'offsets within 0xA000-0xA170 are not yet captured. They almost ' +
-    'certainly live in the 0xA160-0xA170 gap (16 bytes unclaimed by ' +
-    'f4hwn_settings). Modeling them requires either grepping the briand ' +
-    'fork for the SETTINGS_Save* calls that touch them, or a hardware ' +
-    'BEFORE/AFTER backup diff after changing a CW menu value. Until then ' +
-    'CW values round-trip via backup but are not editable in the UI.',
+    'NR7Y CW-modulator settings live at virtual 0xA140 (8 bytes), modeled ' +
+    'by the nr7y_cw_settings block. Layout sources: App/settings.c:358-369 ' +
+    '(read), App/settings.c:1065-1081 (write), App/settings.h:47-72 (key ' +
+    'input bitmap table). Modeled fields: cw_tone_frequency_idx, ' +
+    'cw_sidetone_level, cw_key_wpm, cw_keyer_mode, cw_key_input_menu, ' +
+    'cw_breakin_enable, cw_message_repeat_delay. The byte 2 and byte 3 ' +
+    'validity-marker bits (firmware checks `Data[N] < 0x80`) are exposed ' +
+    'as cw_byte2_invalid / cw_byte3_invalid; clear them to 0 whenever ' +
+    'writing those bytes.',
 };
 
 export const v3ResolverModules = { calibration, f4hwnSettings };
+export const nr7yResolverModules = { nr7yCwSettings };
