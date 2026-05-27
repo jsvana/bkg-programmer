@@ -195,8 +195,15 @@ function FlashTool() {
         <h2>Flash a custom firmware with UVTools2</h2>
         <p style={{ marginTop: "var(--space-2)", color: "var(--fg-muted)" }}>
           bkg-programmer talks the protocol, not the bootloader. Firmware
-          installation runs in a separate tool — UVTools2 — that drives the
-          DFU bootloader directly.
+          installation runs in a separate tool —{" "}
+          <a
+            href="https://armel.github.io/uvtools2/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            UVTools2
+          </a>{" "}
+          — that drives the DFU bootloader directly.
         </p>
 
         <ol className="flash-steps">
