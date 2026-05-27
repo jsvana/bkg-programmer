@@ -39,7 +39,7 @@ export const firmwareRegistry: ReadonlyArray<FirmwareEntry> = [
     // "NR7Y v1.0.0". The speculative /F4HWN.*K1/ fallback that was
     // here before never matched real hardware — dropped.
     versionStringPatterns: [/^NR7Y\b/i],
-    candidateModels: ['uv-k1', 'uv-k5-v3'],
+    candidateModels: ['uv-k1', 'uv-k5-v3', 'uv-k6'],
     profileId: 'uv-k1-f4hwn-nr7y',
     // briand's virtual EEPROM mapping (App/driver/eeprom_compat.c) does
     // NOT expose any region containing an ASCII model identifier.
@@ -63,7 +63,7 @@ export const firmwareRegistry: ReadonlyArray<FirmwareEntry> = [
     family: 'f4hwn',
     displayName: 'F4HWN for UV-K5 V1/V2',
     versionStringPatterns: [/EGZUMER[-_ ]?F4HWN/i, /F4HWN/i],
-    candidateModels: ['uv-k5-v1', 'uv-k5-v2'],
+    candidateModels: ['uv-k5-v1', 'uv-k5-v2', 'uv-k6'],
     profileId: 'uv-k5-v1-f4hwn',
     modelBytesPreserved: true,
     source: { repo: 'armel/uv-k5-firmware-custom' },
@@ -79,7 +79,7 @@ export const firmwareRegistry: ReadonlyArray<FirmwareEntry> = [
     // unambiguously; ordered above the F4HWN pattern because IJV strings
     // contain no F4HWN/EGZUMER token.
     versionStringPatterns: [/^V\d+\.\d+(R\d+)?$/i],
-    candidateModels: ['uv-k5-v1', 'uv-k5-v2'],
+    candidateModels: ['uv-k5-v1', 'uv-k5-v2', 'uv-k6'],
     profileId: 'uv-k5-ijv',
     // IJV is closed-source; we have not confirmed it preserves the V1
     // model identifier at 0x1ED0. Leave false until verified — reading

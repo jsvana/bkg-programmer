@@ -214,6 +214,34 @@ The 16-byte channel record is identical between V1 and V3/K1. Channel
 names (16 bytes, 10 chars + 6 padding) too. Only the array base
 offsets differ.
 
+### UV-K6 is a marketing rename of UV-K5(8), not a new platform
+
+PCB-identical to the K5 family per independent teardowns (rigpix.com
+catalogs it as *"UV-K6 also referred to as UV-K5(8)"*; m5duk.com,
+citing teardown photos: *"There is no difference in technical
+specifications between the models K5, K5(8), K5(99) and K6"* — only
+the LCD backlight color varies). The custom-firmware ecosystem treats
+them as one target (joaquimorg's repo describes itself as the *"UV-K5
+/K6/5R firmware"*; one binary covers the family).
+
+Implication for this project: **K6 is not a new model.** No new
+profile, no new registry entry, no new bit layouts. The MCU revision
+warning sellers slap on K6 listings ("looks the same but different
+processor") is the same DP32G030 (V1-class) vs PY32F071 (V3-class)
+split this project already encodes as `uv-k5-v1` vs `uv-k5-v3`. K6
+units land in one of those buckets depending on silicon revision,
+not a third one.
+
+What we did: added `'uv-k6'` to `candidateModels` on every K5-family
+registry entry (`f4hwn-nr7y-fusion`, `f4hwn-v1`, `ijv-k5-v1`) so the
+UI surfaces "UV-K6" as a candidate name alongside the K5 variants.
+That's the entire change. DFU combo is the K5 combo (PTT + power),
+NOT the K1 combo — don't carry the K1 instructions into K6 copy.
+
+Don't re-litigate by adding a `uv-k6-*` profile file. If a K6 ever
+shows up whose EEPROM disagrees with the K5 V1 or V3 profile, fix
+the existing profile; don't fork.
+
 ## Design decisions worth not relitigating
 
 These were debated and settled during the design session. Reopen only
