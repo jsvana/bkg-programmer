@@ -208,6 +208,44 @@ function FlashTool() {
                 <code> ENABLE_FEAT_F4HWN_LOGO</code> if you also want the
                 bitmap splash.
               </p>
+              <div className="firmware-download">
+                <div className="firmware-download-head">
+                  <strong>NR7Y CW (BKG build) — UV-K1</strong>
+                  <span className="firmware-download-meta">
+                    v1.0.0 · 88 KB
+                  </span>
+                </div>
+                <p className="firmware-download-blurb">
+                  F4HWN NR7Y CW preset built from{" "}
+                  <a
+                    href="https://github.com/briand-hub/uv-k1-k5v3-firmware-custom"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    briand/uv-k1-k5v3-firmware-custom
+                  </a>{" "}
+                  with <code>ENABLE_FEAT_F4HWN_LOGO</code> and{" "}
+                  <code>ENABLE_FEAT_NR7Y_CW</code> on. Enables the bitmap
+                  splash (Splash tool) and the full CW keyer block this
+                  programmer's Quick CW Setup writes to (menus 71/72/73).
+                  Targets UV-K1 Mini Kong; the same image runs on
+                  UV-K5-V3 (firmware identifies as ambiguous —
+                  Quick CW Setup is gated to UV-K1 only for now).
+                </p>
+                <a
+                  href="/firmware/nr7y.cw-bkg-logo.v1.0.0.bin"
+                  download
+                  className="firmware-download-btn"
+                >
+                  Download nr7y.cw-bkg-logo.v1.0.0.bin
+                </a>
+                <p className="firmware-download-hash">
+                  SHA256:{" "}
+                  <code>
+                    01c570ec5150f96c7f8f661e9c4e22a239e8819112bec0f927b0cae3429e3582
+                  </code>
+                </p>
+              </div>
             </div>
           </li>
           <li>

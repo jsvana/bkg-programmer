@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "predeploy": "next build",
-    "deploy": "gh-pages -d out -t true -m \"Deploy $(node -p \\\"require('./package.json').version\\\") [skip ci]\"",
+    "deploy": "gh-pages -d out -t",
     "validate-schema": "tsx scripts/validate.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
