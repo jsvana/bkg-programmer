@@ -218,7 +218,7 @@ function FlashTool() {
                 <p className="firmware-download-blurb">
                   F4HWN NR7Y CW preset built from{" "}
                   <a
-                    href="https://github.com/briand-hub/uv-k1-k5v3-firmware-custom"
+                    href="https://github.com/briand/uv-k1-k5v3-firmware-custom"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
