@@ -6,6 +6,7 @@ import {
   calibration,
   f4hwnSettings,
   nr7yCwSettings,
+  freqLockSettings,
 } from '../modules/index';
 
 /** Opaque read-only block — no field interpretation, just bytes for probing. */
@@ -61,6 +62,11 @@ export const uvK1F4hwnNr7y: Profile = {
     // eeprom_compat.c:56). Layout verified against
     // App/settings.c:358-369 (read) and :1065-1081 (write).
     { binding: { moduleId: 'nr7y_cw_settings', baseOffset: 0xA140 } },
+    // TX frequency-lock byte (gSetting_F_LOCK). 8-byte block at virtual
+    // 0xA150 (identity-mapped to physical 0x00A150 via briand
+    // eeprom_compat.c:56). Only byte 0 is modeled. Verified against
+    // App/settings.c:374 (read) and :1089 (write).
+    { binding: { moduleId: 'freq_lock_settings', baseOffset: 0xA150 } },
     // Boot logo region per briand's eeprom_compat.c virtual mapping
     // (0xC000-0xCFFF, 4 KiB). Hardware probe 2026-05-25 confirmed: this
     // region IS read-mapped on K1+NR7Y and contains a coherent briand-
@@ -96,8 +102,14 @@ export const uvK1F4hwnNr7y: Profile = {
     'cw_breakin_enable, cw_message_repeat_delay. The byte 2 and byte 3 ' +
     'validity-marker bits (firmware checks `Data[N] < 0x80`) are exposed ' +
     'as cw_byte2_invalid / cw_byte3_invalid; clear them to 0 whenever ' +
-    'writing those bytes.',
+    'writing those bytes. ' +
+    '\n\n' +
+    'TX frequency lock (gSetting_F_LOCK) lives at virtual 0xA150 byte 0, ' +
+    'modeled by the freq_lock_settings block. Sources: App/settings.c:374 ' +
+    '(read), :1089 (write), App/settings.h:85-103 (TxLockModes_t enum), ' +
+    'App/ui/menu.c:338 (submenu strings). F_LOCK_FCC = 1 in every build.',
 };
 
 export const v3ResolverModules = { calibration, f4hwnSettings };
 export const nr7yResolverModules = { nr7yCwSettings };
+export const freqLockResolverModules = { freqLockSettings };

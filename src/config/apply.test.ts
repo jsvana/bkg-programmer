@@ -150,6 +150,49 @@ describe('applyConfig — settings overlay (NR7Y f4hwn_settings)', () => {
   });
 });
 
+describe('applyConfig — settings overlay (NR7Y freq_lock_settings)', () => {
+  // freq_lock_settings is bound at 0xA150, size 8 bytes; f_lock is byte 0.
+  // Seed byte 0 with the F4HWN default (0) so a write to FCC (1) registers.
+  const current = makeSnapshot([
+    { start: 0xA150, data: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+  ]);
+
+  test('writes f_lock = FCC by enum label', () => {
+    const cfg: BkgConfig = {
+      schemaVersion: 1,
+      settings: { freq_lock_settings: { f_lock: 'FCC HAM (144-148, 420-450)' } },
+    };
+    const r = applyConfig(cfg, nr7y, current);
+    expect(r.errors).toHaveLength(0);
+    expect(r.fieldChanges).toHaveLength(1);
+    const change = r.fieldChanges[0]!;
+    expect(change.fieldPath).toBe('settings.freq_lock_settings.f_lock');
+    expect(change.byteRange.start).toBe(0xA150);
+    expect(change.byteRange.end).toBe(0xA150 + 1);
+    // FCC = raw 1.
+    expect(r.target.read(0xA150, 1)[0]).toBe(1);
+  });
+
+  test('writes f_lock = FCC by numeric raw value', () => {
+    const cfg: BkgConfig = {
+      schemaVersion: 1,
+      settings: { freq_lock_settings: { f_lock: 1 } },
+    };
+    const r = applyConfig(cfg, nr7y, current);
+    expect(r.errors).toHaveLength(0);
+    expect(r.target.read(0xA150, 1)[0]).toBe(1);
+  });
+
+  test('rejects out-of-range f_lock value', () => {
+    const cfg: BkgConfig = {
+      schemaVersion: 1,
+      settings: { freq_lock_settings: { f_lock: 99 } },
+    };
+    const r = applyConfig(cfg, nr7y, current);
+    expect(r.errors[0]?.kind).toBe('value-bad-enum');
+  });
+});
+
 describe('applyConfig — channels overlay (NR7Y)', () => {
   // For channel index 1 (1-based), record sits at 0x0000-0x000F.
   // Channel name slot sits at 0x4000-0x400F.
