@@ -228,13 +228,13 @@ function headlineFor(radio: RadioIdentity): string {
 function introFor(radio: RadioIdentity): ReactNode {
   switch (radio.kind) {
     case "confirmed":
-      return "EEPROM model bytes confirm this is the radio. The card below is for reference.";
+      return "We're confident this is your radio. The card below is just for reference.";
     case "inferred":
-      return "The firmware fingerprint narrowed this to one model, but we couldn't cross-check via EEPROM model bytes. Compare your radio against the photo and features below.";
+      return "We narrowed it down to one model but couldn't fully confirm it. Compare your radio against the photo and notes below.";
     case "ambiguous":
-      return "The firmware fingerprint matches more than one model. Compare your radio against the photo below — the bullet points highlight what to look for.";
+      return "This firmware runs on more than one model, so we can't tell them apart automatically. Compare your radio against the photos below — the notes point out what to look for.";
     case "conflict":
-      return "The firmware fingerprint and the EEPROM model bytes disagree. Flashing is blocked. Compare your radio against the candidates below and report which one you actually have.";
+      return "The signals we use to identify the radio disagree with each other, so changes are blocked for safety. Compare your radio against the options below and check which one you actually have.";
     case "unknown":
       return "";
   }

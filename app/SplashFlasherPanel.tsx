@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "./SessionContext";
+import { TechDetails } from "./ui";
 import {
   PIXEL_BYTES,
   WIDTH,
@@ -423,16 +424,12 @@ export function SplashFlasherPanel() {
 
   return (
     <Section>
-      <h2 style={{ margin: 0, fontSize: 18 }}>BKG splash flasher (uv-k1-f4hwn-nr7y)</h2>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Custom boot logo</h2>
       <p style={{ color: "var(--muted)", marginTop: 4 }}>
-        Renders a 128×64 BKG badge from your callsign + BKG number and writes
-        it to the bitmap region at{" "}
-        <code>0x{BOOT_LOGO_BITMAP_ADDR.toString(16)}</code>{" "}
-        ({BOOT_LOGO_SIZE} bytes, page-major LSB-top). Then flips{" "}
-        <code>POWER_ON_DISPLAY_MODE</code> to <em>LOGO</em> (0x
-        {MODE_LOGO.toString(16).padStart(2, "0")}) so the firmware actually
-        renders it on boot. Backs up the previous bitmap + mode-byte first
-        so Restore can revert.
+        Make a 128×64 boot logo from your callsign and BKG number, preview it,
+        and save it to the radio. The tool backs up your current logo first,
+        switches the boot screen to show the logo, and lets you put the old
+        one back with Undo.
       </p>
 
       <div
@@ -445,19 +442,23 @@ export function SplashFlasherPanel() {
           fontSize: 13,
         }}
       >
-        <strong>Slow write — be patient.</strong> briand&apos;s{" "}
-        <code>PY25Q16_WriteBuffer</code> erases + reprograms the full 4 KiB
-        flash sector on every 8-byte sub-write where the cache has any
-        non-<code>0xFF</code> byte. Overwriting the MINI KONG bitmap is 128
-        sub-writes split across 5 protocol chunks. Observed on real K1
-        hardware: each chunk can take up to ~60 s; the full write may run{" "}
-        <strong>2-5 minutes</strong>. Per-chunk timeout is{" "}
-        {(BITMAP_WRITE_TIMEOUT_MS / 1000).toFixed(0)} s; progress is logged
-        chunk-by-chunk so you can see it isn&apos;t stuck. Do not unplug
-        or power-cycle the radio while writing. Confirmed against{" "}
-        <code>App/driver/py25q16.c:253-332</code> +{" "}
-        <code>App/driver/eeprom_compat.c:100-119</code>. A firmware-side
-        bulk-write opcode would collapse this to ~1 s; see CLAUDE.md.
+        <strong>This is slow — give it a few minutes.</strong> Saving a logo
+        can take <strong>2–5 minutes</strong> because of how the radio stores
+        images. Progress shows step by step so you can see it&rsquo;s still
+        working. <strong>Don&rsquo;t unplug or turn off the radio while
+        it&rsquo;s saving.</strong>
+        <TechDetails>
+          Each 8-byte sub-write triggers a full 4 KiB flash sector
+          erase + reprogram in briand&apos;s{" "}
+          <code>PY25Q16_WriteBuffer</code> whenever the cache holds any
+          non-<code>0xFF</code> byte. Overwriting the default MINI KONG logo
+          is ~128 sub-writes across 5 protocol chunks; up to ~60 s each on
+          real K1 hardware. Per-chunk timeout is{" "}
+          {(BITMAP_WRITE_TIMEOUT_MS / 1000).toFixed(0)} s. Confirmed against{" "}
+          <code>App/driver/py25q16.c:253-332</code> +{" "}
+          <code>App/driver/eeprom_compat.c:100-119</code>. A firmware-side
+          bulk-write opcode would collapse this to ~1 s; see CLAUDE.md.
+        </TechDetails>
       </div>
 
       {templateError ? (
@@ -475,16 +476,15 @@ export function SplashFlasherPanel() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <strong style={{ fontSize: 13 }}>Probe (non-destructive)</strong>
+          <strong style={{ fontSize: 13 }}>See the current logo (doesn&rsquo;t change anything)</strong>
           <button onClick={() => runStep(probeRead)} disabled={busy}>
-            Read 0x{BOOT_LOGO_BITMAP_ADDR.toString(16)} + preview
+            Show current logo
           </button>
         </div>
         <p style={{ marginTop: 6, marginBottom: 0, fontSize: 12, color: "var(--muted)" }}>
-          Reads the 1024 bytes at the bitmap address (skipping the 8-byte
-          header at <code>0x{BOOT_LOGO_HEADER_ADDR.toString(16)}</code>) and
-          renders them in both polarities. On a fresh NR7Y radio you should
-          see briand&apos;s MINI KONG / BIG MINI KONG default logo here.
+          Reads the logo that&rsquo;s on the radio right now and shows it both
+          normal and inverted. On a fresh radio this is the default MINI KONG
+          logo.
         </p>
         {probeBytesB64 ? (
           <div
@@ -572,30 +572,28 @@ export function SplashFlasherPanel() {
 
       {persisted ? (
         <p style={{ marginTop: 12, fontSize: 13, color: "var(--muted)" }}>
-          Saved {persisted.capturedAt} (firmware{" "}
-          <code>{persisted.firmwareVersion}</code>, callsign{" "}
-          <code>{persisted.callsign}</code>, #{persisted.bkgNum}
-          {persisted.invert ? ", inverted" : ""}). Phase:{" "}
-          <strong>{phase}</strong>.
+          Old logo backed up {new Date(persisted.capturedAt).toLocaleString()}{" "}
+          (callsign <code>{persisted.callsign}</code>, #{persisted.bkgNum}
+          {persisted.invert ? ", inverted" : ""}). You can undo at any time.
         </p>
       ) : null}
 
       <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button onClick={() => runStep(saveOriginalAndWrite)} disabled={!canWrite}>
-          1. Backup + write badge
+          1. Back up &amp; save logo
         </button>
         <button
           className="secondary"
           onClick={() => runStep(rebootRadio)}
           disabled={busy || phase !== "written"}
         >
-          2. Reboot radio
+          2. Restart radio
         </button>
         <button onClick={reportChanged} disabled={busy || phase !== "written"}>
-          3a. Splash changed
+          3a. It worked
         </button>
         <button onClick={reportUnchanged} disabled={busy || phase !== "written"}>
-          3b. Splash unchanged
+          3b. It didn&rsquo;t change
         </button>
         <button
           onClick={() => runStep(restoreOriginal)}
@@ -607,20 +605,21 @@ export function SplashFlasherPanel() {
               phase !== "reported-unchanged")
           }
         >
-          4. Restore original
+          Undo (put the old logo back)
         </button>
         <button className="secondary" onClick={clearState} disabled={busy}>
-          Reset
+          Start over
         </button>
       </div>
 
       {phase === "written" && persisted ? (
         <p style={{ marginTop: 12, fontSize: 13 }}>
-          Badge written. Power-cycle the radio (or click Reboot, then
-          reconnect). Watch the splash on boot. If you see the BKG badge with{" "}
-          <code>{persisted.callsign}</code> / #{persisted.bkgNum} on the right,
-          click <em>Splash changed</em>. If it looks wrong or unchanged, click{" "}
-          <em>Splash unchanged</em> and try the invert toggle.
+          Logo saved. Restart the radio (or click <em>Restart radio</em>, then
+          reconnect) and watch the boot screen. If you see your logo with{" "}
+          <code>{persisted.callsign}</code> / #{persisted.bkgNum}, click{" "}
+          <em>It worked</em>. If it looks wrong or didn&rsquo;t change, click{" "}
+          <em>It didn&rsquo;t change</em> and try turning on the Invert option,
+          then save again.
         </p>
       ) : null}
 
@@ -639,24 +638,26 @@ export function SplashFlasherPanel() {
       ) : null}
 
       {log.length > 0 ? (
-        <pre
-          style={{
-            marginTop: 16,
-            padding: 10,
-            background: "var(--border)",
-            borderRadius: 6,
-            fontSize: 12,
-            maxHeight: 240,
-            overflow: "auto",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {log.join("\n")}
-        </pre>
+        <TechDetails summary="Step-by-step log" open>
+          <pre
+            style={{
+              marginTop: 4,
+              padding: 10,
+              background: "var(--border)",
+              borderRadius: 6,
+              fontSize: 12,
+              maxHeight: 240,
+              overflow: "auto",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {log.join("\n")}
+          </pre>
+        </TechDetails>
       ) : null}
 
       {persisted && phase !== "idle" ? (
-        <details style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
+        <details className="tech" style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
           <summary>Diagnostics</summary>
           <p>
             Original bitmap hash:{" "}

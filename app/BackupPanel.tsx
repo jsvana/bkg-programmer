@@ -32,7 +32,8 @@ export function BackupPanel() {
     return (
       <Section>
         <p style={{ color: "var(--muted)" }}>
-          Backup requires a recognized profile. Detection returned none.
+          We don&rsquo;t recognize this radio&rsquo;s firmware, so we
+          can&rsquo;t back it up safely.
         </p>
       </Section>
     );
@@ -41,7 +42,10 @@ export function BackupPanel() {
   if (!profile) {
     return (
       <Section>
-        <p style={{ color: "#c0392b" }}>Profile "{profileId}" not found.</p>
+        <p style={{ color: "#c0392b" }}>
+          Something went wrong loading this radio&rsquo;s layout. Try
+          reconnecting.
+        </p>
       </Section>
     );
   }
@@ -163,11 +167,12 @@ function BackupForm({
 
   return (
     <Section>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Backup snapshot</h2>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Back up your radio</h2>
       <p style={{ color: "var(--muted)", marginTop: 4 }}>
-        Reads every mapped region declared by the profile. For{" "}
-        <code>{profileId}</code> that's {ranges.length} regions, {totalBytes.toLocaleString()}{" "}
-        bytes total.
+        Saves a complete copy of what&rsquo;s on your radio right now —
+        channels, settings, and the factory calibration that&rsquo;s unique
+        to your radio. Download it and keep it somewhere safe; it&rsquo;s how
+        you put things back if a change ever goes wrong.
       </p>
       {tentative ? (
         <div
@@ -180,18 +185,15 @@ function BackupForm({
             fontSize: 13,
           }}
         >
-          <strong>Tentative profile.</strong> The region addresses for{" "}
-          <code>{profileId}</code> are inferred, not verified against
-          firmware source. The bytes you read may be correct, but you
-          should sanity-check at least one channel name against what the
-          radio displays before trusting the backup.
+          <strong>Double-check this backup.</strong> We&rsquo;re not fully
+          certain of this firmware&rsquo;s layout. The backup is probably
+          fine, but before you rely on it, confirm that at least one channel
+          name in the backup matches what the radio actually shows.
         </div>
       ) : null}
 
-      <details style={{ marginTop: 8 }}>
-        <summary style={{ cursor: "pointer", fontSize: 13 }}>
-          Region plan
-        </summary>
+      <details className="tech" style={{ marginTop: 8 }}>
+        <summary>What gets saved ({ranges.length} parts, {totalBytes.toLocaleString()} bytes)</summary>
         <table style={{ marginTop: 8, fontSize: 13, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ color: "var(--muted)", textAlign: "left" }}>
@@ -218,29 +220,28 @@ function BackupForm({
 
       <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
         <button onClick={run} disabled={running}>
-          {running ? "Reading…" : "Read snapshot"}
+          {running ? "Backing up…" : "Back up now"}
         </button>
         <button
           className="secondary"
           onClick={downloadJson}
           disabled={!lastSnapshot || running}
         >
-          Download JSON
+          Download backup
         </button>
         <button
           className="secondary"
           onClick={downloadBin}
           disabled={!lastSnapshot || running}
         >
-          Download .bin
+          Download raw copy (.bin)
         </button>
       </div>
 
       {progress ? (
         <div style={{ marginTop: 16, fontSize: 13 }}>
           <div style={{ color: "var(--muted)" }}>
-            {progress.done.toLocaleString()} / {progress.total.toLocaleString()} bytes
-            {progress.current ? ` · ${progress.current}` : ""}
+            Reading… {progress.total === 0 ? 0 : pct}%
           </div>
           <div
             style={{
@@ -279,7 +280,8 @@ function BackupForm({
 
       {lastSnapshot && !running ? (
         <p style={{ marginTop: 12, color: "var(--muted)", fontSize: 13 }}>
-          Snapshot ready. {lastSnapshot.getRegions().length} regions captured.
+          Backup ready. Click <strong>Download backup</strong> to save it to
+          your computer.
         </p>
       ) : null}
     </Section>

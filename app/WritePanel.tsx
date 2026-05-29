@@ -11,9 +11,9 @@ import {
   type AsciiFieldLocation,
 } from "./profileLookup";
 import { readAsciiSlot, writeAsciiField } from "./writeFlow";
+import { plainExecResult } from "./ui";
 import type { Session } from "../src/protocol/session";
 import type { ResolvedProfile } from "../src/schema/types";
-import type { ExecResult } from "../src/writer/plan";
 
 /** Slot size for channel names — V1/IJV layout, 10 visible chars + 6 pad. */
 const CHANNEL_NAME_SIZE = 16;
@@ -42,11 +42,10 @@ export function WritePanel() {
 
   return (
     <Section>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Programming</h2>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Edit text</h2>
       <p style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>
-        Direct writes through the planner + executor pipeline. Each save
-        reads the current 8-aligned slot, replaces the field bytes, writes,
-        and reads back to verify. Verify mismatches surface as errors.
+        Edit a few text fields one at a time. After each save, the tool reads
+        the value back from the radio to confirm it took.
       </p>
 
       {bootLine1 ? (
@@ -129,7 +128,7 @@ function AsciiWriter({
         value,
         loc.label,
       );
-      setStatus(formatExecResult(result.exec));
+      setStatus(plainExecResult(result.exec));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -227,7 +226,7 @@ function ChannelNameWriter({
         name,
         `Channel ${channel} name`,
       );
-      setStatus(formatExecResult(result.exec));
+      setStatus(plainExecResult(result.exec));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -270,39 +269,6 @@ function ChannelNameWriter({
       </ActionRow>
     </SubSection>
   );
-}
-
-function formatExecResult(exec: ExecResult): string {
-  switch (exec.status) {
-    case "success":
-      return `Verified. ${exec.batchesWritten} batch(es) in ${Math.round(exec.durationMs)} ms.`;
-    case "success-with-warnings":
-      return `Verified with ${exec.warnings.length} warning(s): ${exec.warnings
-        .map((w) => w.message)
-        .join("; ")}`;
-    case "aborted-preflight":
-      return `Aborted at preflight: ${exec.failedChecks
-        .map((c) => `${c.id}: ${c.message}`)
-        .join("; ")}`;
-    case "aborted-mid-execute": {
-      const r = exec.reason;
-      const reasonText =
-        r.kind === "verify-mismatch"
-          ? `verify mismatch (expected ${hex(r.expected)}, got ${hex(r.actual)})`
-          : r.kind === "snapshot-drift"
-            ? `snapshot drift at 0x${r.address.toString(16)}`
-            : r.kind === "protocol-error"
-              ? `protocol error: ${r.underlying.message}`
-              : r.kind === "timeout"
-                ? `timeout after ${r.afterMs} ms`
-                : r.kind;
-      return `Aborted mid-execute: ${reasonText}. Last good batch: ${exec.lastBatchOk}.`;
-    }
-  }
-}
-
-function hex(bytes: Uint8Array): string {
-  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join(" ");
 }
 
 function Section({ children }: { children: React.ReactNode }) {
@@ -349,9 +315,7 @@ function SubSection({
       >
         <strong style={{ fontSize: 14 }}>{title}</strong>
         <span style={{ color: "var(--muted)", fontSize: 12 }}>
-          {address !== null
-            ? `0x${address.toString(16).toUpperCase().padStart(4, "0")} · max ${maxLength} chars`
-            : "—"}
+          {address !== null ? `up to ${maxLength} characters` : "—"}
         </span>
       </div>
       {children}
@@ -381,7 +345,6 @@ function Status({ text, error }: { text: string; error?: boolean }) {
       style={{
         fontSize: 13,
         color: error ? "#c0392b" : "#2e7d32",
-        fontFamily: "ui-monospace, monospace",
       }}
     >
       {text}

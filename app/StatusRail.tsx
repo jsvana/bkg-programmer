@@ -21,12 +21,12 @@ export function StatusRail() {
           <span className="rail-field-label">
             {insecure ? "connection" : "browser"}
           </span>
-          <span>{insecure ? "https required" : "web serial unsupported"}</span>
+          <span>{insecure ? "secure page needed" : "can't connect here"}</span>
         </span>
         <span className="rail-field" style={{ color: "var(--fg-muted)" }}>
           {insecure
-            ? "Web Serial only works on https:// (or localhost). Reload over HTTPS."
-            : "use Chrome, Edge, or another Chromium-based desktop browser"}
+            ? "Connecting to a radio needs a secure (https://) page. Reload over https."
+            : "Connecting needs Chrome or Edge on a computer (this browser can't talk to USB devices)."}
         </span>
       </div>
     );
@@ -69,7 +69,7 @@ export function StatusRail() {
           {hello.isInLockScreen ? (
             <span className="rail-field" style={{ color: "var(--warn)" }}>
               <span className="rail-field-label">lock</span>
-              <span>screen active</span>
+              <span>radio is locked</span>
             </span>
           ) : null}
         </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "./SessionContext";
+import { TechDetails } from "./ui";
 import type { Session } from "../src/protocol/session";
 
 const ADDR_A = 0x2e00;
@@ -228,13 +229,12 @@ export function SplashTestPanel() {
 
   return (
     <Section>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Splash logo probe (uv-k1-stock)</h2>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Boot logo test (advanced)</h2>
       <p style={{ color: "var(--muted)", marginTop: 4 }}>
-        Determines whether the firmware reads the boot logo from{" "}
-        <code>0x2E00</code>, the mirror at <code>0x3000</code>, or both, and
-        whether the chosen address accepts writes at all. Writes a test pattern
-        to the selected target only, asks you to power-cycle, then restores the
-        original.
+        An experiment for stock firmware: it writes a temporary test image to
+        the radio&rsquo;s boot logo, asks you to restart and see whether the
+        screen changed, then puts the original back. This helps figure out
+        whether the boot logo can be changed on this radio at all.
       </p>
 
       <div style={{ marginTop: 12, fontSize: 13 }}>
@@ -282,9 +282,9 @@ export function SplashTestPanel() {
           fontSize: 13,
         }}
       >
-        <strong>Destructive.</strong> Overwrites bytes the firmware may render
-        on boot. Original bytes are saved to localStorage before any write; if
-        anything goes wrong you can reload this page and click <em>Restore</em>.
+        <strong>This changes the boot screen.</strong> Your original logo is
+        backed up before anything is written, so if something goes wrong you
+        can reload this page and click <em>Put it back</em>.
       </div>
 
       {persisted ? (
@@ -300,32 +300,32 @@ export function SplashTestPanel() {
           onClick={() => runStep(saveOriginals)}
           disabled={busy || phase !== "idle"}
         >
-          1. Save originals
+          1. Back up
         </button>
         <button
           onClick={() => runStep(writeTestPattern)}
           disabled={busy || phase !== "saved"}
         >
-          2. Write test pattern
+          2. Write a test image
         </button>
         <button
           className="secondary"
           onClick={() => runStep(rebootRadio)}
           disabled={busy || phase !== "written"}
         >
-          3. Reboot radio
+          3. Restart radio
         </button>
         <button
           onClick={reportChanged}
           disabled={busy || phase !== "written"}
         >
-          4a. Splash changed
+          4a. It changed
         </button>
         <button
           onClick={reportUnchanged}
           disabled={busy || phase !== "written"}
         >
-          4b. Splash unchanged
+          4b. No change
         </button>
         <button
           onClick={() => runStep(restoreOriginal)}
@@ -334,24 +334,24 @@ export function SplashTestPanel() {
             (phase !== "reported-changed" && phase !== "reported-unchanged")
           }
         >
-          5. Restore original
+          5. Put it back
         </button>
         <button
           className="secondary"
           onClick={clearState}
           disabled={busy}
         >
-          Reset
+          Start over
         </button>
       </div>
 
       {phase === "written" && persisted ? (
         <p style={{ marginTop: 12, fontSize: 13 }}>
-          Test pattern written to <code>0x{persisted.target.toString(16)}</code>.
-          Power-cycle the radio (or click Reboot, then reconnect). Watch the
-          splash: if the <strong>top half</strong> of the display is now{" "}
-          <strong>solid white</strong>, click <em>Splash changed</em>. Otherwise
-          click <em>Splash unchanged</em>.
+          Test image written. Restart the radio (or click <em>Restart radio</em>,
+          then reconnect) and watch the boot screen. If the{" "}
+          <strong>top half</strong> of the display is now{" "}
+          <strong>solid white</strong>, click <em>It changed</em>. Otherwise
+          click <em>No change</em>.
         </p>
       ) : null}
 
@@ -370,20 +370,22 @@ export function SplashTestPanel() {
       ) : null}
 
       {log.length > 0 ? (
-        <pre
-          style={{
-            marginTop: 16,
-            padding: 10,
-            background: "var(--border)",
-            borderRadius: 6,
-            fontSize: 12,
-            maxHeight: 240,
-            overflow: "auto",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {log.join("\n")}
-        </pre>
+        <TechDetails summary="Step-by-step log" open>
+          <pre
+            style={{
+              marginTop: 4,
+              padding: 10,
+              background: "var(--border)",
+              borderRadius: 6,
+              fontSize: 12,
+              maxHeight: 240,
+              overflow: "auto",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {log.join("\n")}
+          </pre>
+        </TechDetails>
       ) : null}
     </Section>
   );

@@ -13,6 +13,7 @@ import {
   getChannelCount,
   isChannelNamesReadOnly,
 } from "./profileLookup";
+import { TechDetails } from "./ui";
 
 interface Step {
   step: string;
@@ -32,8 +33,8 @@ export function SelfTestPanel() {
     return (
       <Section>
         <p style={{ color: "var(--muted)" }}>
-          Self-test requires a recognized profile. Detection returned no
-          suggested profile; refusing to run.
+          We don&rsquo;t recognize this radio&rsquo;s firmware, so there&rsquo;s
+          nothing to check yet.
         </p>
       </Section>
     );
@@ -43,7 +44,8 @@ export function SelfTestPanel() {
     return (
       <Section>
         <p style={{ color: "#c0392b" }}>
-          Profile "{profileId}" not found in registry.
+          Something went wrong loading this radio&rsquo;s layout. Try
+          reconnecting.
         </p>
       </Section>
     );
@@ -52,11 +54,11 @@ export function SelfTestPanel() {
   if (isChannelNamesReadOnly(profile)) {
     return (
       <Section>
-        <h2 style={{ margin: 0, fontSize: 18 }}>Self-test</h2>
+        <h2 style={{ margin: 0, fontSize: 18 }}>Check this radio</h2>
         <p style={{ color: "var(--muted)", marginTop: 8 }}>
-          Profile <code>{profileId}</code> is marked read-only — its channel
-          name layout is inferred, not verified against firmware source.
-          Refusing to write to an unverified address. Backup is still safe.
+          We&rsquo;re not certain enough about this firmware&rsquo;s layout to
+          safely test-write to it, so this check is turned off. Backing up your
+          radio is still completely safe.
         </p>
       </Section>
     );
@@ -169,31 +171,22 @@ function SelfTestForm({
 
   return (
     <Section>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Self-test</h2>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Check this radio</h2>
       <p style={{ color: "var(--muted)", marginTop: 4 }}>
-        Proves write-then-read actually verifies persistence (and not just RAM
-        cache) for this firmware. Backs up + restores a single scratch channel
-        name. Reboots the radio up to 3 times.
+        Confirms that changes you make will actually stick on this radio. It
+        briefly changes the name of one spare channel, reads it back, restarts
+        the radio to be sure it really saved, then puts the name back exactly
+        as it was. The radio restarts a few times during the check.
       </p>
 
       <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-        <Field label={`Scratch channel (1..${maxChannel})`}>
+        <Field label={`Spare channel to test with (1–${maxChannel})`}>
           <input
             type="number"
             min={1}
             max={maxChannel}
             value={scratchChannel}
             onChange={(e) => setScratchChannel(e.target.value)}
-            disabled={running}
-            style={inputStyle}
-          />
-        </Field>
-        <Field label="Unmapped test address (optional, hex)">
-          <input
-            type="text"
-            placeholder="e.g. 0x5000"
-            value={unmappedAddress}
-            onChange={(e) => setUnmappedAddress(e.target.value)}
             disabled={running}
             style={inputStyle}
           />
@@ -213,15 +206,28 @@ function SelfTestForm({
             disabled={running}
           />
           <span>
-            I confirm channel {scratchChannel} is unused. Its name will be
-            overwritten and restored.
+            I&rsquo;m not using channel {scratchChannel}. Its name will be
+            changed and then put back.
           </span>
         </label>
       </div>
 
+      <TechDetails summary="Advanced — also test an unmapped address">
+        <Field label="Unmapped test address (optional, hex)">
+          <input
+            type="text"
+            placeholder="e.g. 0x5000"
+            value={unmappedAddress}
+            onChange={(e) => setUnmappedAddress(e.target.value)}
+            disabled={running}
+            style={inputStyle}
+          />
+        </Field>
+      </TechDetails>
+
       <div style={{ marginTop: 16 }}>
         <button onClick={run} disabled={!confirmed || running}>
-          {running ? "Running…" : "Run self-test"}
+          {running ? "Checking…" : "Check this radio"}
         </button>
       </div>
 
@@ -270,26 +276,33 @@ function ReportView({ report }: { report: SelfTestReport }) {
       }}
     >
       <div style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
-        <strong style={{ color }}>{report.passed ? "PASS" : "FAIL"}</strong>
+        <strong style={{ color }}>
+          {report.passed ? "Looks good" : "Problem found"}
+        </strong>
         <span style={{ color: "var(--muted)", fontSize: 13 }}>
           {report.firmwareVersion} · {report.radioModel}
         </span>
       </div>
-      <ResultRow name="Protocol roundtrip" result={report.tests.protocolRoundtrip} />
+      <p style={{ marginTop: 4, fontSize: 13, color: "var(--muted)" }}>
+        {report.passed
+          ? "Your changes will save and stick on this radio."
+          : "Changes may not save reliably on this radio — see the details below."}
+      </p>
+      <ResultRow name="Talking to the radio" result={report.tests.protocolRoundtrip} />
       <ResultRow
-        name="Persistence across reboot"
+        name="Changes survive a restart"
         result={report.tests.persistenceAcrossReboot}
       />
-      <ResultRow name="Silent-drop detection" result={report.tests.silentDropDetection} />
-      <div style={{ marginTop: 8, fontSize: 13 }}>
-        <strong>Recommendations:</strong>{" "}
-        rebootWaitMs={report.recommendations.rebootWaitMs}; trustReadback=
-        <code>{report.recommendations.trustReadback}</code>
-      </div>
-      <details style={{ marginTop: 10 }}>
-        <summary style={{ cursor: "pointer", fontSize: 13 }}>Raw JSON</summary>
+      <ResultRow name="No silently-ignored changes" result={report.tests.silentDropDetection} />
+      <details className="tech" style={{ marginTop: 10 }}>
+        <summary>Technical detail</summary>
+        <div style={{ marginTop: 8, fontSize: 13 }}>
+          rebootWaitMs={report.recommendations.rebootWaitMs}; trustReadback=
+          <code>{report.recommendations.trustReadback}</code>
+        </div>
         <pre
           style={{
+            marginTop: 8,
             background: "var(--border)",
             padding: 8,
             fontSize: 12,

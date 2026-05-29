@@ -30,26 +30,24 @@ export function StockFirmwareGuide() {
       }}
     >
       <h2 style={{ margin: 0, fontSize: 18 }}>
-        Stock firmware detected — flash custom to unlock programming
+        This radio still has its factory firmware
       </h2>
       <p style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>
-        <code>{firmware.entry.displayName}</code> read-maps EEPROM but
-        silently rejects writes to channel, settings, and splash regions
-        via the standard programming protocol. To use the rest of this
-        tool, flash a supported custom firmware first.
+        The factory firmware (<code>{firmware.entry.displayName}</code>) quietly
+        ignores changes to channels, settings, and the boot screen. To use the
+        rest of this tool, install custom firmware first — here&rsquo;s how.
       </p>
 
       <ol style={{ marginTop: 16, paddingLeft: 20, fontSize: 14, lineHeight: 1.55 }}>
         <li style={{ marginBottom: 14 }}>
-          <strong>Back up factory data first.</strong> Scroll to the{" "}
-          <em>Backup snapshot</em> section below, click <em>Read snapshot</em>,
-          then download both <code>.json</code> and <code>.bin</code>. Stock
-          calibration is unique per radio and irreplaceable — save it before
-          touching anything else.
+          <strong>Back up the factory data first.</strong> In UVTools2, use the{" "}
+          <em>Dump Calib</em> tab to save your radio&rsquo;s factory
+          calibration. It&rsquo;s unique to your radio and can&rsquo;t be
+          recreated — save it before changing anything else.
         </li>
 
         <li style={{ marginBottom: 14 }}>
-          <strong>Put the radio in DFU (flash) mode.</strong>
+          <strong>Put the radio in install mode.</strong>
           <ol type="a" style={{ marginTop: 6, paddingLeft: 20 }}>
             <li>Power the radio off (volume knob counter-clockwise until it clicks).</li>
             <li>
@@ -60,9 +58,8 @@ export function StockFirmwareGuide() {
               While holding PTT, power on by turning the volume knob clockwise.
             </li>
             <li>
-              Release PTT. The radio is now in DFU mode, waiting for a
-              firmware image. The display will be blank or show nothing —
-              that's normal.
+              Release PTT. The radio is now in install mode, waiting for new
+              firmware. The screen will be blank — that&rsquo;s normal.
             </li>
           </ol>
         </li>
@@ -102,10 +99,10 @@ export function StockFirmwareGuide() {
         </li>
 
         <li>
-          <strong>Reconnect.</strong> After the flash, power-cycle the radio
-          back into normal mode (no buttons held), then come back here and
-          click <em>Connect</em> at the top. Detection should now show the
-          new firmware family and the read-only restrictions will lift.
+          <strong>Reconnect.</strong> After installing, turn the radio off and
+          back on normally (no buttons held), then come back here and click{" "}
+          <em>Connect</em> at the top. The tool should now recognize the new
+          firmware, and the rest of the features will unlock.
         </li>
       </ol>
 
@@ -120,12 +117,10 @@ export function StockFirmwareGuide() {
           color: "var(--muted)",
         }}
       >
-        <strong>Why not just flash without backing up?</strong> Calibration
-        data lives in flash regions that the new firmware will reuse, but a
-        bad flash or a future firmware swap can corrupt them. A pre-flash
-        backup is the only way to restore your radio's factory tuning if
-        something goes wrong. UVTools2 also has a separate <em>Dump Calib</em>{" "}
-        tab specifically for the calibration blob — running both is belt-and-suspenders.
+        <strong>Why back up first?</strong> Your radio&rsquo;s factory tuning
+        is stored in the same memory the new firmware reuses. If an install
+        goes wrong, that backup is the only way to get your radio&rsquo;s
+        original tuning back — so it&rsquo;s worth the extra minute.
       </p>
     </section>
   );

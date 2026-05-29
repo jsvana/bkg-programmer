@@ -13,6 +13,7 @@ import {
 } from "../src/config";
 import { planWrites } from "../src/writer/planner";
 import { executeWritePlan } from "../src/writer/executor";
+import { plainExecResult } from "./ui";
 import type { ExecResult, WritePlan } from "../src/writer/plan";
 import type { Session } from "../src/protocol/session";
 import { fLockValues, F_LOCK_FCC } from "../src/schema/modules/index";
@@ -153,21 +154,21 @@ function CwQuickSetupInner({
   // Form validation, surfaced inline.
   const formError = useMemo<string | null>(() => {
     if (!Number.isInteger(channelIndex) || channelIndex < 1 || channelIndex > 200) {
-      return "Channel slot must be an integer 1..200 (stock K1 menu cap).";
+      return "Channel number must be between 1 and 200.";
     }
     if (channelName.length === 0 || channelName.length > 10) {
-      return "Channel name must be 1..10 ASCII characters.";
+      return "Channel name must be 1–10 characters.";
     }
     if (!/^[\x20-\x7E]*$/.test(channelName)) {
-      return "Channel name must be printable ASCII.";
+      return "Channel name can only use normal letters, numbers, and symbols.";
     }
     const freq = parseFloat(freqMhz);
     if (!Number.isFinite(freq) || freq < 18 || freq > 1300) {
-      return "Frequency must be 18..1300 MHz.";
+      return "Frequency must be between 18 and 1300 MHz.";
     }
     const wpmInt = parseInt(wpm, 10);
     if (!Number.isInteger(wpmInt) || wpmInt < 10 || wpmInt > 40) {
-      return "WPM must be an integer between 10 and 40.";
+      return "Speed must be between 10 and 40 WPM.";
     }
     return null;
   }, [channelIndex, channelName, freqMhz, wpm]);
@@ -318,22 +319,23 @@ function CwQuickSetupInner({
         marginTop: 20,
       }}
     >
-      <h2 style={{ margin: 0, fontSize: 18 }}>CW QRP quick setup</h2>
+      <h2 style={{ margin: 0, fontSize: 18 }}>CW quick setup</h2>
       <p style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>
-        Defaults map the F4HWN NR7Y CW operator menu items 2, 12, 71, 72, 73,
-        the F-Lock TX frequency lock, plus a channel slot. Adjust below, then
-        preview & write. Profile: <code>{profileId}</code>.
+        Sets up a CW (Morse) channel, your keyer, and your transmit band
+        limits in one go. The menu numbers below match the menu on your radio,
+        so you can find the same settings there later. Adjust anything,
+        preview, then save.
       </p>
 
       <FieldGrid>
         <NumberField
-          label="Channel slot"
+          label="Channel number"
           value={channelIndex}
           min={1}
           max={200}
           onChange={setChannelIndex}
           disabled={busy}
-          hint="1-based, matching the radio menu (max 200 on stock K1)."
+          hint="Matches the channel number on your radio (1–200)."
         />
         <TextField
           label="Channel name"
@@ -341,14 +343,14 @@ function CwQuickSetupInner({
           maxLength={10}
           onChange={setChannelName}
           disabled={busy}
-          hint="Up to 10 ASCII characters."
+          hint="Up to 10 characters."
         />
         <TextField
           label="Frequency (MHz)"
           value={freqMhz}
           onChange={setFreqMhz}
           disabled={busy}
-          hint="Simplex; RX = TX. 2 m default 144.025."
+          hint="Simplex (receive and transmit on the same frequency). Default 144.025."
         />
         <SelectField
           label="Menu 2 — TX power"
@@ -356,7 +358,7 @@ function CwQuickSetupInner({
           options={[...TX_POWER_OPTIONS]}
           onChange={setTxPower}
           disabled={busy}
-          hint="OUTPUT_POWER. Low3 ≈ 250 mW; Mid ≈ 2 W."
+          hint="Transmit power. Low3 ≈ 250 mW; Mid ≈ 2 W."
         />
         <SelectField
           label="Menu 71 — Keyer mode"
@@ -384,12 +386,12 @@ function CwQuickSetupInner({
           hint="Default is PTT HandKey (safe with the programming cable). Port-using modes are listed below."
         />
         <SelectField
-          label="F Lock — TX frequency lock"
+          label="Transmit band limits (F-Lock)"
           value={fLock}
           options={[...F_LOCK_OPTIONS]}
           onChange={setFLock}
           disabled={busy}
-          hint="gSetting_F_LOCK. Default FCC HAM limits TX to US 2 m (144-148) and 70 cm (420-450)."
+          hint="Limits which frequencies the radio will transmit on. The FCC HAM setting allows US 2 m (144–148 MHz) and 70 cm (420–450 MHz)."
         />
       </FieldGrid>
 
@@ -397,22 +399,17 @@ function CwQuickSetupInner({
 
       {PORT_USING_KEY_INPUTS.has(keyInput) ? (
         <Banner kind="warn">
-          <strong>Cable warning.</strong> "{keyInput}" polls the TRRS port
-          at boot for paddle dit/dah lines. The programming cable is in
-          that same jack — on next boot, firmware{" "}
-          <code>CW_CheckKeyerInputs</code> (App/app/cwkeyer.c:460) will
-          see the cable as a stuck paddle, show <code>CW KEY STUCK / Port
-          Input disabled</code> for 2 s, revert this setting to{" "}
-          <code>PTT HandKey</code>, and during that 2 s window the radio
-          won't ack hello packets, so reconnects time out. Set this on
-          the radio itself once the paddle is plugged in instead.
+          <strong>Don&rsquo;t pick this one over the cable.</strong> &ldquo;
+          {keyInput}&rdquo; listens to the same jack your programming cable is
+          plugged into. If you save it now, the radio mistakes the cable for a
+          stuck key on the next restart, briefly shows a warning, and undoes
+          the setting — and during that moment this tool can&rsquo;t reconnect.
+          Set this one on the radio itself once your paddle is plugged in.
         </Banner>
       ) : null}
 
-      <details style={{ marginTop: 12 }}>
-        <summary style={{ cursor: "pointer", fontSize: 13 }}>
-          Generated config (hand-editable as JSON below)
-        </summary>
+      <details className="tech" style={{ marginTop: 12 }}>
+        <summary>Advanced — view and edit as a config file</summary>
         <pre
           style={{
             marginTop: 8,
@@ -457,7 +454,7 @@ function StageView({
     return (
       <ActionRow>
         <button onClick={onLoadAndPreview} disabled={!canPreview}>
-          Read radio and preview
+          Preview changes
         </button>
       </ActionRow>
     );
@@ -465,23 +462,18 @@ function StageView({
 
   if (stage.kind === "reading") {
     const pct = stage.total === 0 ? 0 : Math.round((stage.done / stage.total) * 100);
-    return (
-      <ProgressBlock
-        label={`Reading ${stage.current || "…"} — ${stage.done}/${stage.total} bytes`}
-        pct={pct}
-      />
-    );
+    return <ProgressBlock label={`Reading from radio… ${pct}%`} pct={pct} />;
   }
 
   if (stage.kind === "read-error") {
     return (
       <>
         <Banner kind="error">
-          <strong>Read failed.</strong> {stage.message}
+          <strong>Couldn&rsquo;t read from the radio.</strong> {stage.message}
         </Banner>
         <ActionRow>
           <button className="secondary" onClick={onReset}>
-            Back to form
+            Back
           </button>
         </ActionRow>
       </>
@@ -496,21 +488,24 @@ function StageView({
         {hasErrors ? (
           <Banner kind="error">
             <strong>
-              {stage.applied.errors.length} error
+              {stage.applied.errors.length} problem
               {stage.applied.errors.length === 1 ? "" : "s"}.
             </strong>{" "}
-            Write disabled.
+            Fix {stage.applied.errors.length === 1 ? "it" : "them"} before saving.
           </Banner>
         ) : nothingToDo ? (
           <Banner kind="info">
-            <strong>No changes.</strong> The radio already matches.
+            <strong>Nothing to change.</strong> The radio already has these
+            settings.
           </Banner>
         ) : (
           <Banner kind="info">
-            <strong>{stage.applied.fieldChanges.length} field change(s).</strong>{" "}
-            {stage.plan.batches.length} batch(es),{" "}
-            {stage.plan.totals.bytesWritten.toLocaleString()} bytes. Estimated ~
-            {Math.round(stage.plan.totals.estimatedDurationMs / 100) / 10}s.
+            <strong>
+              {stage.applied.fieldChanges.length} change
+              {stage.applied.fieldChanges.length === 1 ? "" : "s"} ready.
+            </strong>{" "}
+            About {Math.max(1, Math.round(stage.plan.totals.estimatedDurationMs / 1000))}s
+            to save. Review below, then save.
           </Banner>
         )}
 
@@ -530,7 +525,7 @@ function StageView({
                 : { background: "#2e7d32", color: "white", borderColor: "#2e7d32" }
             }
           >
-            Write to radio
+            Save to radio
           </button>
           <button className="secondary" onClick={onReset}>
             Cancel
@@ -542,37 +537,18 @@ function StageView({
 
   if (stage.kind === "writing") {
     const pct = stage.total === 0 ? 0 : Math.round((stage.done / stage.total) * 100);
-    return (
-      <ProgressBlock
-        label={`Writing ${stage.batchId} — batch ${stage.done}/${stage.total}`}
-        pct={pct}
-      />
-    );
+    return <ProgressBlock label={`Saving to radio… ${pct}%`} pct={pct} />;
   }
 
   if (stage.kind === "done") {
     const r = stage.result;
-    if (r.status === "success") {
-      return (
-        <>
-          <Banner kind="success">
-            <strong>Written and verified.</strong> {r.batchesWritten} batch(es)
-            in {Math.round(r.durationMs)} ms.
-          </Banner>
-          <ActionRow>
-            <button onClick={onReset}>Back to form</button>
-          </ActionRow>
-        </>
-      );
-    }
     return (
       <>
-        <Banner kind="warn">
-          <strong>Write completed with status: {r.status}.</strong> See the
-          program tool's main config panel for the full result detail.
+        <Banner kind={r.status === "success" ? "success" : "warn"}>
+          {plainExecResult(r)}
         </Banner>
         <ActionRow>
-          <button onClick={onReset}>Back to form</button>
+          <button onClick={onReset}>Done</button>
         </ActionRow>
       </>
     );
@@ -582,11 +558,11 @@ function StageView({
     return (
       <>
         <Banner kind="error">
-          <strong>Write failed.</strong> {stage.message}
+          <strong>Couldn&rsquo;t save to the radio.</strong> {stage.message}
         </Banner>
         <ActionRow>
           <button className="secondary" onClick={onReset}>
-            Back to form
+            Back
           </button>
         </ActionRow>
       </>
@@ -601,15 +577,14 @@ function DiffTable({ changes }: { changes: ApplyResult["fieldChanges"] }) {
   return (
     <details open style={{ marginTop: 12 }}>
       <summary style={{ cursor: "pointer", fontSize: 13 }}>
-        {changes.length} field change(s)
+        {changes.length} change{changes.length === 1 ? "" : "s"}
       </summary>
       <table style={{ marginTop: 8, fontSize: 12, borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr style={{ color: "var(--muted)", textAlign: "left" }}>
-            <th style={{ padding: "2px 12px 2px 0" }}>Field</th>
-            <th style={{ padding: "2px 12px 2px 0" }}>Before</th>
-            <th style={{ padding: "2px 12px 2px 0" }}>After</th>
-            <th style={{ padding: "2px 12px 2px 0" }}>Address</th>
+            <th style={{ padding: "2px 12px 2px 0" }}>Setting</th>
+            <th style={{ padding: "2px 12px 2px 0" }}>Now</th>
+            <th style={{ padding: "2px 12px 2px 0" }}>New</th>
           </tr>
         </thead>
         <tbody>
@@ -621,9 +596,6 @@ function DiffTable({ changes }: { changes: ApplyResult["fieldChanges"] }) {
               </td>
               <td style={{ padding: "2px 12px 2px 0" }}>
                 <code>{c.after.display}</code>
-              </td>
-              <td style={{ padding: "2px 12px 2px 0", color: "var(--muted)" }}>
-                <code>0x{c.byteRange.start.toString(16).padStart(4, "0").toUpperCase()}</code>
               </td>
             </tr>
           ))}

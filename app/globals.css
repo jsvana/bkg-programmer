@@ -663,6 +663,141 @@ hr {
   font-size: var(--text-xs);
 }
 
+/* ========================================================================
+ * Shared panel primitives (app/ui.tsx)
+ * ====================================================================== */
+
+/* A flat section inside a focused tool. Mirrors the per-panel inline cards
+   so old and new panels read as one consistent stack. */
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--space-5);
+  background: var(--surface);
+}
+.panel-title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+.panel-lead {
+  margin-top: var(--space-1);
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+/* Step grouping — makes "back up first" visibly weightier than the optional
+   editors below it. */
+.step-group + .step-group { margin-top: var(--space-6); }
+.step-group-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.step-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+.step-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--fg);
+}
+.step-tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--fg-muted);
+}
+.step-tag.important {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.step-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+.step-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+/* A step's panels shouldn't carry the tool-stack top-margin reset's gap on
+   top of the flex gap. */
+.step-group-body > * { margin-top: 0 !important; }
+
+/* Progressive-disclosure "Technical detail" expander. Quiet by default;
+   the content reads as reference, not as the main copy. */
+details.tech {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}
+details.tech > summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+  list-style: revert;
+}
+details.tech > summary:hover { color: var(--fg-muted); }
+details.tech[open] > summary { color: var(--fg-muted); margin-bottom: var(--space-2); }
+.tech-body {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  line-height: 1.55;
+}
+.tech-body code { color: var(--fg); }
+
+/* Shared status banner. */
+.banner {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+.banner strong { font-weight: 600; }
+.banner.info { background: var(--surface-sunken); }
+.banner.note {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+}
+.banner.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: oklch(from var(--warn) l c h / 0.08);
+}
+.banner.warn strong { color: var(--warn); }
+.banner.error {
+  color: var(--err);
+  border-color: var(--err);
+  background: oklch(from var(--err) l c h / 0.08);
+}
+.banner.error strong { color: var(--err); }
+.banner.success {
+  color: var(--ok);
+  border-color: var(--ok);
+  background: oklch(from var(--ok) l c h / 0.08);
+}
+.banner.success strong { color: var(--ok); }
+
 /* Responsive shrinkage. */
 @media (max-width: 640px) {
   .topbar, .rail, .workspace {

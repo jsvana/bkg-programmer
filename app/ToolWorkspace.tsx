@@ -15,6 +15,7 @@ import { SplashTestPanel } from "./SplashTestPanel";
 import { WelcomeStringsPanel } from "./WelcomeStringsPanel";
 import { SplashFlasherPanel } from "./SplashFlasherPanel";
 import { useSession } from "./SessionContext";
+import { StepGroup } from "./ui";
 
 import type { UtilityId } from "./types";
 
@@ -27,12 +28,12 @@ interface ToolMeta {
 const TOOL_META: Record<ToolId, ToolMeta> = {
   flash: {
     num: "01",
-    name: "Flash firmware",
+    name: "Install firmware",
     blurb: (
       <>
-        bkg-programmer does not flash firmware itself — it can't, by design.
-        Use <strong>UVTools2</strong> with the steps below, then come back
-        here to program the radio.
+        This app can&rsquo;t install firmware itself — that&rsquo;s on purpose.
+        Use a separate tool called <strong>UVTools2</strong> with the steps
+        below, then come back here to set up your radio.
       </>
     ),
   },
@@ -41,22 +42,21 @@ const TOOL_META: Record<ToolId, ToolMeta> = {
     name: "Program radio",
     blurb: (
       <>
-        Back up first, then load a config file or edit fields directly. Every
-        write is read-verified; mismatches halt the batch and report which
-        address differed.
+        Back up your radio first, then set up channels and text. Every change
+        is read back to confirm it saved — if anything doesn&rsquo;t match,
+        the tool stops and tells you rather than leaving things half-done.
       </>
     ),
   },
   splash: {
     num: "03",
-    name: "Splash screen",
+    name: "Boot screen",
     blurb: (
       <>
-        Set the boot display mode, welcome strings, or — on firmwares built
-        with <code>ENABLE_FEAT_F4HWN_LOGO</code> — a 128×64 monochrome
-        bitmap. The diagnostic test panel verifies that splash-region
-        writes actually persist on your firmware before you touch the
-        real logo.
+        Change what your radio shows when it powers on — the display style,
+        two lines of welcome text, or a custom logo image (on firmware that
+        supports it). Each option backs up the original first so you can put
+        it back.
       </>
     ),
   },
@@ -65,24 +65,23 @@ const TOOL_META: Record<ToolId, ToolMeta> = {
 const UTILITY_META: Record<UtilityId, ToolMeta> = {
   "self-test": {
     num: "U-1",
-    name: "Self-test",
+    name: "Check this radio",
     blurb: (
       <>
-        Writes a known byte to a safe channel-name slot, reads it back, and
-        — optionally — reboots the radio and reads again to confirm the
-        firmware actually persisted the change rather than caching it in
-        RAM. Per-(model, firmware-version) result is cached locally.
+        Confirms that changes you make will actually stick on this radio.
+        It temporarily writes to one unused channel, reads it back, restarts
+        the radio, and checks again — then puts everything back. The result
+        is remembered for this firmware so you only run it once.
       </>
     ),
   },
   identity: {
     num: "U-2",
-    name: "Resolve radio identity",
+    name: "Which radio is this?",
     blurb: (
       <>
-        Detection couldn't fully confirm which radio is on the cable.
-        Compare the photos and bullet differentiators below against your
-        device.
+        We couldn&rsquo;t be completely sure which radio is connected.
+        Compare the photos and notes below against the radio in your hand.
       </>
     ),
   },
@@ -91,8 +90,8 @@ const UTILITY_META: Record<UtilityId, ToolMeta> = {
     name: "Connection details",
     blurb: (
       <>
-        Full hello reply: firmware match, radio identity, programmability
-        verdict, lock-screen flag, AES key flag, raw detection notes.
+        Everything we detected when you connected: the radio model, its
+        firmware, whether changes are safe to make, and a few status flags.
       </>
     ),
   },
@@ -142,11 +141,25 @@ function ToolContent({ tool }: { tool: ToolId | UtilityId }) {
       if (!connected) return <NotConnectedHint />;
       return (
         <>
-          <BackupPanel />
-          <ChannelProgramPanel />
-          <CwQuickSetupPanel />
-          <WritePanel />
-          <ConfigPanel />
+          <StepGroup
+            n={1}
+            title="Back up your radio"
+            importance="important"
+            hint="Save a copy of everything on your radio before changing anything. If a change ever goes wrong, this is what puts it back."
+          >
+            <BackupPanel />
+          </StepGroup>
+          <StepGroup
+            n={2}
+            title="Make your changes"
+            importance="optional"
+            hint="Use whichever of these you need — they're independent. Nothing is sent to the radio until you review the changes and choose to save."
+          >
+            <ChannelProgramPanel />
+            <CwQuickSetupPanel />
+            <WritePanel />
+            <ConfigPanel />
+          </StepGroup>
         </>
       );
 
@@ -154,6 +167,10 @@ function ToolContent({ tool }: { tool: ToolId | UtilityId }) {
       if (!connected) return <NotConnectedHint />;
       return (
         <>
+          <p className="tool-view-blurb" style={{ marginBottom: 0 }}>
+            Pick whichever option fits what you want to change. Each one backs
+            up the original first.
+          </p>
           <WelcomeStringsPanel />
           <SplashFlasherPanel />
           <SplashTestPanel />
@@ -176,8 +193,8 @@ function ToolContent({ tool }: { tool: ToolId | UtilityId }) {
 function NotConnectedHint() {
   return (
     <div className="callout">
-      Not connected. Use the <strong>connect radio</strong> button in the
-      status rail above to open a serial port.
+      No radio connected yet. Use the <strong>connect radio</strong> button in
+      the bar above to connect one.
     </div>
   );
 }
@@ -194,28 +211,28 @@ function FlashTool() {
       {connectedToStock ? <StockFirmwareGuide /> : null}
 
       <div className="flash-card">
-        <h2>Flash a custom firmware with UVTools2</h2>
+        <h2>Install custom firmware with UVTools2</h2>
         <p style={{ marginTop: "var(--space-2)", color: "var(--fg-muted)" }}>
-          bkg-programmer talks the protocol, not the bootloader. Firmware
-          installation runs in a separate tool —{" "}
+          This app sets up your radio, but it doesn&rsquo;t install firmware.
+          For that, use a separate, free tool called{" "}
           <a
             href="https://armel.github.io/uvtools2/"
             target="_blank"
             rel="noopener noreferrer"
           >
             UVTools2
-          </a>{" "}
-          — that drives the DFU bootloader directly.
+          </a>
+          . Follow the steps below, then come back here.
         </p>
 
         <ol className="flash-steps">
           <li>
             <div>
-              <h4>Pick a target firmware</h4>
+              <h4>Choose firmware</h4>
               <p>
-                F4HWN family (Fusion, Edition, NR7Y) for UV-K5-V1 / V3 / K1;
-                <code> ENABLE_FEAT_F4HWN_LOGO</code> if you also want the
-                bitmap splash.
+                The F4HWN family (Fusion, Edition, NR7Y) works on UV-K5 and
+                UV-K1 radios. If you want a custom logo on the boot screen,
+                use a build that supports it — the download below does.
               </p>
               <div className="firmware-download">
                 <div className="firmware-download-head">
@@ -270,42 +287,44 @@ function FlashTool() {
           </li>
           <li>
             <div>
-              <h4>Enter DFU mode on the radio</h4>
+              <h4>Put the radio in install mode</h4>
               <p>
-                UV-K5: hold <code>PTT + Side1</code> while powering on.
-                UV-K1 Mini Kong: <strong>hold PTT alone</strong> while
-                powering on — the K5 combo enters a different engineering
-                menu on K1.
+                <strong>UV-K1 Mini Kong:</strong> hold the <strong>PTT</strong>{" "}
+                key by itself while powering on.{" "}
+                <strong>UV-K5:</strong> hold <strong>PTT and the top side
+                button</strong> while powering on. (On the K1, adding the side
+                button opens a different hidden menu instead — PTT alone.)
               </p>
             </div>
           </li>
           <li>
             <div>
-              <h4>Flash with UVTools2</h4>
+              <h4>Install it with UVTools2</h4>
               <p>
-                Open the .bin in UVTools2, select the right COM port, hit
-                Flash. Wait for the radio to reboot.
+                In UVTools2, open the firmware file you downloaded, pick the
+                radio&rsquo;s port, and start the install. Wait for the radio
+                to restart on its own.
               </p>
             </div>
           </li>
           <li>
             <div>
-              <h4>Reconnect here</h4>
+              <h4>Come back and reconnect</h4>
               <p>
-                Power-cycle, reconnect the cable, and use the rail's{" "}
-                <em>connect radio</em> button. Detection will identify the
-                new firmware and unlock Program / Splash.
+                Turn the radio off and back on normally, reconnect the cable,
+                and use the <em>connect radio</em> button in the bar above.
+                The Program and Boot screen tools unlock once the new firmware
+                is detected.
               </p>
             </div>
           </li>
         </ol>
 
         <div className="callout">
-          <strong>Why this step is gated.</strong> Stock firmware
-          read-maps EEPROM regions (channels, settings, boot logo) but
-          silently drops the standard <code>0x051D</code> write opcode
-          against them — no reply, no error, just nothing happens. Custom
-          firmware re-enables those writes.
+          <strong>Why is this needed?</strong> The factory firmware quietly
+          ignores changes to channels, settings, and the boot screen — it
+          accepts the request but nothing actually changes. Custom firmware
+          allows those changes.
         </div>
       </div>
     </>

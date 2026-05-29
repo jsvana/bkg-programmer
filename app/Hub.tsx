@@ -42,25 +42,25 @@ export function Hub({
   const flashStatus: Status = isStock
     ? { chip: { label: "do this first", tone: "required" }, primary: true }
     : connected && fwKind === "matched"
-      ? { chip: { label: "already on custom fw", tone: "ok" } }
-      : { chip: { label: "external — uvtools2", tone: "warn" } };
+      ? { chip: { label: "already installed", tone: "ok" } }
+      : { chip: { label: "uses UVTools2", tone: "warn" } };
 
   const programStatus: Status =
     !connected
       ? { chip: { label: "connect first", tone: "warn" }, disabled: true, disabledReason: "Connect a radio to begin." }
       : isStock
-        ? { chip: { label: "needs custom fw", tone: "warn" }, disabled: true, disabledReason: "Stock firmware silently rejects writes — flash custom firmware first." }
+        ? { chip: { label: "needs custom firmware", tone: "warn" }, disabled: true, disabledReason: "Your radio's factory firmware won't accept changes. Install custom firmware first." }
         : fwKind !== "matched"
-          ? { chip: { label: "firmware unrecognised", tone: "warn" }, disabled: true, disabledReason: "Detection didn't match a known profile; refusing to write." }
+          ? { chip: { label: "firmware not recognized", tone: "warn" }, disabled: true, disabledReason: "We don't recognize this firmware, so we won't risk changing anything." }
           : { chip: { label: "ready", tone: "ok" }, primary: !isStock };
 
   const splashStatus: Status =
     !connected
       ? { chip: { label: "connect first", tone: "warn" }, disabled: true, disabledReason: "Connect a radio to begin." }
       : isStock
-        ? { chip: { label: "stock blocks splash writes", tone: "warn" }, disabled: true, disabledReason: "Stock K1 read-maps the boot logo but silently rejects writes." }
+        ? { chip: { label: "needs custom firmware", tone: "warn" }, disabled: true, disabledReason: "Factory firmware won't let the boot screen be changed. Install custom firmware first." }
         : fwKind !== "matched"
-          ? { chip: { label: "firmware unrecognised", tone: "warn" }, disabled: true, disabledReason: "Detection didn't match a known profile; refusing to write." }
+          ? { chip: { label: "firmware not recognized", tone: "warn" }, disabled: true, disabledReason: "We don't recognize this firmware, so we won't risk changing anything." }
           : { chip: { label: "ready", tone: "ok" } };
 
   // Only one .primary at a time. Flash wins if stock; else Program.
@@ -71,8 +71,8 @@ export function Hub({
       <header className="workspace-intro">
         <h1>What do you want to do?</h1>
         <p>
-          Pick a tool. Connection status stays in the rail above; the
-          workspace will focus on just the chosen tool.
+          Pick a tool below. Your connection stays shown in the bar above,
+          and the screen focuses on just the tool you choose.
         </p>
       </header>
 
@@ -81,22 +81,22 @@ export function Hub({
       <div className="hub" role="list">
         <Tile
           num="01"
-          name="Flash firmware"
-          desc="Install F4HWN-family custom firmware (e.g. NR7Y) using UVTools2. This unlocks the EEPROM writes the other two tools depend on — stock firmware silently rejects them."
+          name="Install firmware"
+          desc="Install custom firmware (like NR7Y) using a separate tool called UVTools2. The other two tools only work once custom firmware is installed — the factory firmware won't let them make changes."
           status={flashStatus}
           onSelect={() => onSelect("flash")}
         />
         <Tile
           num="02"
           name="Program radio"
-          desc="Back up the EEPROM, then apply a config file or edit channel names, callsign, and boot text strings. Every write is read-verified."
+          desc="Back up your radio first, then set up channels, your callsign, and boot-screen text. Every change is saved and read back to confirm it stuck."
           status={programStatus}
           onSelect={() => onSelect("program")}
         />
         <Tile
           num="03"
-          name="Set splash screen"
-          desc="Customise the boot display — six display modes, two welcome strings, and (on firmwares with the LOGO feature) a 128×64 monochrome bitmap."
+          name="Boot screen"
+          desc="Change what shows when the radio powers on — the display style, two lines of welcome text, and (on firmware that supports it) a custom logo image."
           status={splashStatus}
           onSelect={() => onSelect("splash")}
         />
@@ -130,28 +130,29 @@ function PowerOnModes() {
         Power-on modes
       </span>
       <p className="modes-lead">
-        The radio boots into a different mode depending on which button you
-        hold while turning it on. <strong>This tool can only program the
-        radio when it&rsquo;s in programmer mode.</strong>
+        Your radio starts up differently depending on which button you hold
+        while turning it on. <strong>This tool can only make changes when the
+        radio is in programming mode.</strong>
       </p>
       <ul className="mode-list">
         <li className="mode">
           <span className="mode-hold">No button</span>
           <span className="mode-body">
-            <span className="mode-name">Standard radio</span>
+            <span className="mode-name">Normal use</span>
             <span className="mode-desc">
-              Power on normally. The radio operates as usual — transmit,
-              receive, menus. Not programmable over serial in this mode.
+              Turn it on as usual — transmit, receive, menus. This tool
+              can&rsquo;t talk to the radio in this mode.
             </span>
           </span>
         </li>
         <li className="mode">
           <span className="mode-hold">Hold PTT</span>
           <span className="mode-body">
-            <span className="mode-name">DFU mode</span>
+            <span className="mode-name">Install mode</span>
             <span className="mode-desc">
-              Hold the PTT key while powering on. Used to flash firmware
-              (e.g. with UVTools2). Not used by this tool directly.
+              Hold the PTT (push-to-talk) key while powering on. This is for
+              installing firmware with UVTools2. You won&rsquo;t use this mode
+              here directly.
             </span>
           </span>
         </li>
@@ -159,14 +160,13 @@ function PowerOnModes() {
           <span className="mode-hold">Hold Side&nbsp;2</span>
           <span className="mode-body">
             <span className="mode-name">
-              Programmer mode <span className="chip required">required to program</span>
+              Programming mode <span className="chip required">needed for this tool</span>
             </span>
             <span className="mode-desc">
-              Hold the bottom-left side button (Side&nbsp;2) while powering on.
-              The radio waits for serial commands so this tool can read and
-              write the EEPROM.{" "}
-              <strong>Only available on the forked BKG firmware</strong> —
-              flash it first if you don&rsquo;t have it.
+              Hold the lower side button (Side&nbsp;2) while powering on. The
+              radio then waits for this tool to read and change its settings.{" "}
+              <strong>Only available once custom firmware is installed</strong> —
+              install it first if your radio still has the factory firmware.
             </span>
           </span>
         </li>
@@ -229,9 +229,9 @@ function UtilityRow({
       <div>
         <span className="label-caps">Utilities</span>
         <button className="utility-link" onClick={() => onOpen("self-test")}>
-          Self-test
+          Check this radio
           <span className="utility-link-desc">
-            — verify writes persist on this firmware version
+            — confirm your changes will actually stick
           </span>
         </button>
       </div>
@@ -239,8 +239,8 @@ function UtilityRow({
         <div>
           <span className="label-caps">Identity</span>
           <button className="utility-link" onClick={() => onOpen("identity")}>
-            Resolve radio identity
-            <span className="utility-link-desc">— inferred / ambiguous</span>
+            Which radio is this?
+            <span className="utility-link-desc">— we couldn&rsquo;t tell for sure</span>
           </button>
         </div>
       ) : null}
@@ -252,7 +252,7 @@ function UtilityRow({
         >
           Connection details
           <span className="utility-link-desc">
-            — programmability, notes, AES key
+            — everything we detected about this radio
           </span>
         </button>
       </div>

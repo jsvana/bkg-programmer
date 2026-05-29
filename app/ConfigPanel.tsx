@@ -14,6 +14,7 @@ import {
 } from "../src/config";
 import { planWrites } from "../src/writer/planner";
 import { executeWritePlan } from "../src/writer/executor";
+import { plainExecResult } from "./ui";
 import type { ExecResult, WritePlan, WriteBatch } from "../src/writer/plan";
 import type { Session } from "../src/protocol/session";
 import type { ResolvedProfile } from "../src/schema/types";
@@ -141,20 +142,17 @@ function ConfigPanelInner({
 
   return (
     <Section>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Load configuration</h2>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Load a setup file</h2>
       <p style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>
-        Drop a BKG config JSON file here, preview the diff against the live
-        radio, then write. Configs are sparse overlays — channels and fields
-        not mentioned are preserved. Active profile:{" "}
-        <code>{profileId}</code>.
+        Have a setup file someone shared, or one you saved earlier? Load it
+        here, preview exactly what it changes, then save. Anything the file
+        doesn&rsquo;t mention is left exactly as it is on your radio.
       </p>
 
       <FileChooser onFile={onFile} disabled={stage.kind === "reading" || stage.kind === "writing"} />
 
-      <details style={{ marginTop: 12 }}>
-        <summary style={{ cursor: "pointer", fontSize: 13 }}>
-          Or paste JSON
-        </summary>
+      <details className="tech" style={{ marginTop: 12 }}>
+        <summary>Advanced — paste the file&rsquo;s text instead</summary>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -223,24 +221,22 @@ function StageView({
   if (stage.kind === "parse-error") {
     return (
       <Banner kind="error">
-        <strong>Parse error.</strong> {stage.message}
+        <strong>That doesn&rsquo;t look like a valid setup file.</strong>{" "}
+        {stage.message}
       </Banner>
     );
   }
 
   if (stage.kind === "parsed") {
-    const total = stage.regions.reduce((s, r) => s + r.length, 0);
     return (
       <>
         <Banner kind="info">
-          <strong>Ready.</strong>{" "}
-          {stage.config.name ? `"${stage.config.name}" · ` : ""}
-          {stage.regions.length} region(s), {total.toLocaleString()} bytes to
-          read from radio before applying.
+          <strong>{stage.config.name ? `"${stage.config.name}" loaded.` : "File loaded."}</strong>{" "}
+          Preview to see exactly what it will change.
         </Banner>
         <RegionTable regions={stage.regions} />
         <ActionRow>
-          <button onClick={onLoadAndPreview}>Read radio and preview</button>
+          <button onClick={onLoadAndPreview}>Preview changes</button>
           <button className="secondary" onClick={onReset}>
             Clear
           </button>
@@ -251,19 +247,14 @@ function StageView({
 
   if (stage.kind === "reading") {
     const pct = stage.total === 0 ? 0 : Math.round((stage.done / stage.total) * 100);
-    return (
-      <ProgressBlock
-        label={`Reading ${stage.current || "…"} — ${stage.done}/${stage.total} bytes`}
-        pct={pct}
-      />
-    );
+    return <ProgressBlock label={`Reading from radio… ${pct}%`} pct={pct} />;
   }
 
   if (stage.kind === "read-error") {
     return (
       <>
         <Banner kind="error">
-          <strong>Read failed.</strong> {stage.message}
+          <strong>Couldn&rsquo;t read from the radio.</strong> {stage.message}
         </Banner>
         <ActionRow>
           <button className="secondary" onClick={onReset}>
@@ -287,12 +278,7 @@ function StageView({
 
   if (stage.kind === "writing") {
     const pct = stage.total === 0 ? 0 : Math.round((stage.done / stage.total) * 100);
-    return (
-      <ProgressBlock
-        label={`Writing ${stage.batchId} — batch ${stage.done}/${stage.total}`}
-        pct={pct}
-      />
-    );
+    return <ProgressBlock label={`Saving to radio… ${pct}%`} pct={pct} />;
   }
 
   if (stage.kind === "done") {
@@ -300,7 +286,7 @@ function StageView({
       <>
         <ResultBanner result={stage.result} />
         <ActionRow>
-          <button onClick={onReset}>Load another config</button>
+          <button onClick={onReset}>Load another file</button>
         </ActionRow>
       </>
     );
@@ -310,7 +296,7 @@ function StageView({
     return (
       <>
         <Banner kind="error">
-          <strong>Write failed.</strong> {stage.message}
+          <strong>Couldn&rsquo;t save to the radio.</strong> {stage.message}
         </Banner>
         <ActionRow>
           <button className="secondary" onClick={onReset}>
@@ -343,29 +329,32 @@ function PreviewView({
       {hasErrors ? (
         <Banner kind="error">
           <strong>
-            {applied.errors.length} error{applied.errors.length === 1 ? "" : "s"}.
+            {applied.errors.length} problem{applied.errors.length === 1 ? "" : "s"}.
           </strong>{" "}
-          Write disabled until resolved.
+          Can&rsquo;t save until {applied.errors.length === 1 ? "it's" : "they're"} sorted out.
         </Banner>
       ) : nothingToDo ? (
         <Banner kind="info">
-          <strong>No changes.</strong> The config matches the radio's
-          current state. Nothing to write.
+          <strong>Nothing to change.</strong> Your radio already matches this
+          file.
         </Banner>
       ) : (
         <Banner kind="info">
-          <strong>{applied.fieldChanges.length} field change(s).</strong>{" "}
-          {plan.batches.length} batch(es), {plan.totals.bytesWritten.toLocaleString()}{" "}
-          bytes to write. Estimated ~{Math.round(plan.totals.estimatedDurationMs / 100) / 10}s.
+          <strong>
+            {applied.fieldChanges.length} change
+            {applied.fieldChanges.length === 1 ? "" : "s"} ready.
+          </strong>{" "}
+          About {Math.max(1, Math.round(plan.totals.estimatedDurationMs / 1000))}s
+          to save. Review below, then save.
         </Banner>
       )}
 
       {applied.errors.length > 0 ? (
-        <ErrorList items={applied.errors} title="Errors" />
+        <ErrorList items={applied.errors} title="Problems" />
       ) : null}
 
       {applied.warnings.length > 0 ? (
-        <ErrorList items={applied.warnings} title="Warnings" tone="warn" />
+        <ErrorList items={applied.warnings} title="Heads up" tone="warn" />
       ) : null}
 
       {applied.fieldChanges.length > 0 ? (
@@ -382,7 +371,7 @@ function PreviewView({
               : { background: "#2e7d32", color: "white", borderColor: "#2e7d32" }
           }
         >
-          Write to radio
+          Save to radio
         </button>
         <button className="secondary" onClick={onReset}>
           Cancel
@@ -413,7 +402,7 @@ function DiffTable({
   return (
     <details open style={{ marginTop: 12 }}>
       <summary style={{ cursor: "pointer", fontSize: 13 }}>
-        {changes.length} field change(s)
+        {changes.length} change{changes.length === 1 ? "" : "s"}
       </summary>
       <div style={{ marginTop: 8 }}>
         {groups.map(([key, items]) => (
@@ -422,10 +411,9 @@ function DiffTable({
             <table style={{ fontSize: 12, borderCollapse: "collapse", width: "100%" }}>
               <thead>
                 <tr style={{ color: "var(--muted)", textAlign: "left" }}>
-                  <th style={{ padding: "2px 12px 2px 0" }}>Field</th>
-                  <th style={{ padding: "2px 12px 2px 0" }}>Before</th>
-                  <th style={{ padding: "2px 12px 2px 0" }}>After</th>
-                  <th style={{ padding: "2px 12px 2px 0" }}>Address</th>
+                  <th style={{ padding: "2px 12px 2px 0" }}>Setting</th>
+                  <th style={{ padding: "2px 12px 2px 0" }}>Now</th>
+                  <th style={{ padding: "2px 12px 2px 0" }}>New</th>
                 </tr>
               </thead>
               <tbody>
@@ -437,11 +425,6 @@ function DiffTable({
                     </td>
                     <td style={{ padding: "2px 12px 2px 0" }}>
                       <code>{c.after.display}</code>
-                    </td>
-                    <td style={{ padding: "2px 12px 2px 0", color: "var(--muted)" }}>
-                      <code>
-                        0x{c.byteRange.start.toString(16).padStart(4, "0").toUpperCase()}
-                      </code>
                     </td>
                   </tr>
                 ))}
@@ -498,9 +481,9 @@ function ErrorList({
 
 function RegionTable({ regions }: { regions: RegionRange[] }) {
   return (
-    <details style={{ marginTop: 8 }}>
-      <summary style={{ cursor: "pointer", fontSize: 13 }}>
-        Read plan ({regions.length} region{regions.length === 1 ? "" : "s"})
+    <details className="tech" style={{ marginTop: 8 }}>
+      <summary>
+        What it reads from the radio ({regions.length} region{regions.length === 1 ? "" : "s"})
       </summary>
       <table style={{ marginTop: 8, fontSize: 12, borderCollapse: "collapse" }}>
         <thead>
@@ -529,48 +512,13 @@ function RegionTable({ regions }: { regions: RegionRange[] }) {
 }
 
 function ResultBanner({ result }: { result: ExecResult }) {
-  if (result.status === "success") {
-    return (
-      <Banner kind="success">
-        <strong>Written and verified.</strong> {result.batchesWritten} batch(es)
-        in {Math.round(result.durationMs)} ms.
-      </Banner>
-    );
-  }
-  if (result.status === "success-with-warnings") {
-    return (
-      <Banner kind="warn">
-        <strong>Written with warnings.</strong>{" "}
-        {result.warnings.map((w) => w.message).join("; ")}
-      </Banner>
-    );
-  }
-  if (result.status === "aborted-preflight") {
-    return (
-      <Banner kind="error">
-        <strong>Aborted at preflight.</strong>{" "}
-        {result.failedChecks.map((c) => `${c.id}: ${c.message}`).join("; ")}
-      </Banner>
-    );
-  }
-  // aborted-mid-execute
-  const r = result.reason;
-  const reasonText =
-    r.kind === "verify-mismatch"
-      ? `verify mismatch at batch ${result.failedBatch.id}`
-      : r.kind === "snapshot-drift"
-        ? `snapshot drift at 0x${r.address.toString(16)}`
-        : r.kind === "protocol-error"
-          ? `protocol error: ${r.underlying.message}`
-          : r.kind === "timeout"
-            ? `timeout after ${r.afterMs} ms`
-            : r.kind;
-  return (
-    <Banner kind="error">
-      <strong>Aborted mid-execute.</strong> {reasonText}. Last successful batch:{" "}
-      {result.lastBatchOk}.
-    </Banner>
-  );
+  const kind =
+    result.status === "success"
+      ? "success"
+      : result.status === "success-with-warnings"
+        ? "warn"
+        : "error";
+  return <Banner kind={kind}>{plainExecResult(result)}</Banner>;
 }
 
 function ProgressBlock({ label, pct }: { label: string; pct: number }) {

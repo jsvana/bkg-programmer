@@ -71,7 +71,9 @@ function DisconnectedView({
   return (
     <>
       <p style={{ color: "var(--muted)", marginTop: 4 }}>
-        Plug your radio in via the K5 programming cable, then click Connect.
+        Plug your radio in with the programming cable, put it in programming
+        mode (hold the lower side button while turning it on), then click
+        Connect.
       </p>
       <button onClick={onConnect} disabled={busy}>
         {busy ? "Connecting…" : "Connect to radio"}
@@ -112,7 +114,7 @@ function ConnectedView({
       <Row label="Firmware">
         <FirmwareBadge firmware={firmware} />
       </Row>
-      <Row label="Programmability">
+      <Row label="Safe to change?">
         <ProgrammabilityBadge programmability={programmability} />
       </Row>
       {modelBytesString !== undefined ? (
@@ -120,10 +122,10 @@ function ConnectedView({
           <code>{modelBytesString}</code>
         </Row>
       ) : null}
-      <Row label="Lock screen">
+      <Row label="Radio locked">
         <code>{hello.isInLockScreen ? "yes" : "no"}</code>
       </Row>
-      <Row label="Custom AES key">
+      <Row label="Custom encryption key">
         <code>{hello.hasCustomAesKey ? "yes" : "no"}</code>
       </Row>
       {notes.length > 0 ? (
@@ -249,20 +251,20 @@ function ProgrammabilityBadge({
 }) {
   switch (programmability.kind) {
     case "verified":
-      return <Badge color={GREEN} label="verified" detail="self-test passed" />;
+      return <Badge color={GREEN} label="yes" detail="checked and confirmed" />;
     case "verified-with-reboot":
       return (
-        <Badge color={GREEN} label="verified" detail="readback after reboot" />
+        <Badge color={GREEN} label="yes" detail="confirmed after a restart" />
       );
     case "provisional":
       return (
         <Badge
           color={AMBER}
-          label="provisional"
+          label="probably"
           detail={
             programmability.reason === "self-test-not-run"
-              ? "self-test not yet run"
-              : "self-test failed"
+              ? "not checked yet — run “Check this radio” to be sure"
+              : "the check found a problem"
           }
         />
       );
@@ -270,11 +272,11 @@ function ProgrammabilityBadge({
       return (
         <Badge
           color={GREY}
-          label="unsupported"
+          label="no"
           detail={
             programmability.reason === "firmware-unknown"
-              ? "unknown firmware"
-              : "no profile registered"
+              ? "firmware not recognized"
+              : "firmware not supported"
           }
         />
       );
@@ -285,8 +287,8 @@ function ProgrammabilityBadge({
           label="blocked"
           detail={
             programmability.reason === "radio-identity-conflict"
-              ? "radio identity conflict"
-              : "radio in DFU mode"
+              ? "we can't tell which radio this is"
+              : "radio is in install mode"
           }
         />
       );

@@ -25,6 +25,7 @@ import {
   type ChannelMode,
   type ChannelModeSelection,
 } from "./bandPlan";
+import { plainExecResult } from "./ui";
 
 const MODE_OPTIONS: ReadonlyArray<ChannelMode> = ["FM", "AM", "USB", "CW"];
 
@@ -148,16 +149,16 @@ function ChannelProgramInner({
 
   const formError = useMemo<string | null>(() => {
     if (!Number.isInteger(channelIndex) || channelIndex < 1 || channelIndex > channelCount) {
-      return `Channel slot must be an integer 1..${channelCount}.`;
+      return `Channel number must be between 1 and ${channelCount}.`;
     }
     if (channelName.length === 0 || channelName.length > 10) {
-      return "Channel name must be 1..10 ASCII characters.";
+      return "Channel name must be 1–10 characters.";
     }
     if (!/^[\x20-\x7E]*$/.test(channelName)) {
-      return "Channel name must be printable ASCII.";
+      return "Channel name can only use normal letters, numbers, and symbols.";
     }
     if (!Number.isFinite(parsedFreq) || parsedFreq < 18 || parsedFreq > 1300) {
-      return "Frequency must be 18..1300 MHz (radio tuning range).";
+      return "Frequency must be between 18 and 1300 MHz.";
     }
     return null;
   }, [channelIndex, channelName, parsedFreq, channelCount]);
@@ -312,20 +313,20 @@ function ChannelProgramInner({
     >
       <h2 style={{ margin: 0, fontSize: 18 }}>Program a channel</h2>
       <p style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>
-        Set one channel slot: name, frequency, modulation. Mode defaults
-        to <strong>Auto</strong>, which picks from the ARRL US band plan
-        plus aviation AM. Profile: <code>{profileId}</code>.
+        Set up one channel — name, frequency, and mode. Leave Mode on{" "}
+        <strong>Auto</strong> and it picks a sensible default from the US band
+        plan (plus AM for the aviation band).
       </p>
 
       <FieldGrid>
         <NumberField
-          label="Channel slot"
+          label="Channel number"
           value={channelIndex}
           min={1}
           max={channelCount}
           onChange={setChannelIndex}
           disabled={busy}
-          hint={`1-based, matching the radio menu (max ${channelCount} on this profile).`}
+          hint={`Matches the channel number on your radio (1–${channelCount}).`}
         />
         <TextField
           label="Channel name"
@@ -333,14 +334,14 @@ function ChannelProgramInner({
           maxLength={10}
           onChange={setChannelName}
           disabled={busy}
-          hint="Up to 10 printable ASCII characters."
+          hint="Up to 10 characters."
         />
         <TextField
           label="Frequency (MHz)"
           value={freqMhz}
           onChange={setFreqMhz}
           disabled={busy}
-          hint="Simplex; RX = TX. Default 146.520 (2 m calling)."
+          hint="Simplex (receive and transmit on the same frequency). Default 146.520 (2 m calling)."
         />
         <ModeField
           selection={modeSelection}
@@ -361,16 +362,14 @@ function ChannelProgramInner({
           options={[...TX_POWER_OPTIONS]}
           onChange={setTxPower}
           disabled={busy}
-          hint="OUTPUT_POWER. Low3 ≈ 250 mW; Mid ≈ 2 W."
+          hint="Transmit power. Low3 ≈ 250 mW; Mid ≈ 2 W."
         />
       </FieldGrid>
 
       {formError ? <Banner kind="error">{formError}</Banner> : null}
 
-      <details style={{ marginTop: 12 }}>
-        <summary style={{ cursor: "pointer", fontSize: 13 }}>
-          Generated config
-        </summary>
+      <details className="tech" style={{ marginTop: 12 }}>
+        <summary>Advanced — view as a config file</summary>
         <pre
           style={{
             marginTop: 8,
@@ -509,7 +508,7 @@ function StageView({
     return (
       <ActionRow>
         <button onClick={onLoadAndPreview} disabled={!canPreview}>
-          Read radio and preview
+          Preview changes
         </button>
       </ActionRow>
     );
@@ -517,23 +516,18 @@ function StageView({
 
   if (stage.kind === "reading") {
     const pct = stage.total === 0 ? 0 : Math.round((stage.done / stage.total) * 100);
-    return (
-      <ProgressBlock
-        label={`Reading ${stage.current || "…"} — ${stage.done}/${stage.total} bytes`}
-        pct={pct}
-      />
-    );
+    return <ProgressBlock label={`Reading from radio… ${pct}%`} pct={pct} />;
   }
 
   if (stage.kind === "read-error") {
     return (
       <>
         <Banner kind="error">
-          <strong>Read failed.</strong> {stage.message}
+          <strong>Couldn&rsquo;t read from the radio.</strong> {stage.message}
         </Banner>
         <ActionRow>
           <button className="secondary" onClick={onReset}>
-            Back to form
+            Back
           </button>
         </ActionRow>
       </>
@@ -548,21 +542,24 @@ function StageView({
         {hasErrors ? (
           <Banner kind="error">
             <strong>
-              {stage.applied.errors.length} error
+              {stage.applied.errors.length} problem
               {stage.applied.errors.length === 1 ? "" : "s"}.
             </strong>{" "}
-            Write disabled.
+            Fix {stage.applied.errors.length === 1 ? "it" : "them"} before saving.
           </Banner>
         ) : nothingToDo ? (
           <Banner kind="info">
-            <strong>No changes.</strong> The radio already matches.
+            <strong>Nothing to change.</strong> The radio already has these
+            settings.
           </Banner>
         ) : (
           <Banner kind="info">
-            <strong>{stage.applied.fieldChanges.length} field change(s).</strong>{" "}
-            {stage.plan.batches.length} batch(es),{" "}
-            {stage.plan.totals.bytesWritten.toLocaleString()} bytes. Estimated ~
-            {Math.round(stage.plan.totals.estimatedDurationMs / 100) / 10}s.
+            <strong>
+              {stage.applied.fieldChanges.length} change
+              {stage.applied.fieldChanges.length === 1 ? "" : "s"} ready.
+            </strong>{" "}
+            About {Math.max(1, Math.round(stage.plan.totals.estimatedDurationMs / 1000))}s
+            to save. Review below, then save.
           </Banner>
         )}
 
@@ -582,7 +579,7 @@ function StageView({
                 : { background: "#2e7d32", color: "white", borderColor: "#2e7d32" }
             }
           >
-            Write to radio
+            Save to radio
           </button>
           <button className="secondary" onClick={onReset}>
             Cancel
@@ -594,37 +591,18 @@ function StageView({
 
   if (stage.kind === "writing") {
     const pct = stage.total === 0 ? 0 : Math.round((stage.done / stage.total) * 100);
-    return (
-      <ProgressBlock
-        label={`Writing ${stage.batchId} — batch ${stage.done}/${stage.total}`}
-        pct={pct}
-      />
-    );
+    return <ProgressBlock label={`Saving to radio… ${pct}%`} pct={pct} />;
   }
 
   if (stage.kind === "done") {
     const r = stage.result;
-    if (r.status === "success") {
-      return (
-        <>
-          <Banner kind="success">
-            <strong>Written and verified.</strong> {r.batchesWritten} batch(es)
-            in {Math.round(r.durationMs)} ms.
-          </Banner>
-          <ActionRow>
-            <button onClick={onReset}>Back to form</button>
-          </ActionRow>
-        </>
-      );
-    }
     return (
       <>
-        <Banner kind="warn">
-          <strong>Write completed with status: {r.status}.</strong> See the
-          program tool's main config panel for the full result detail.
+        <Banner kind={r.status === "success" ? "success" : "warn"}>
+          {plainExecResult(r)}
         </Banner>
         <ActionRow>
-          <button onClick={onReset}>Back to form</button>
+          <button onClick={onReset}>Done</button>
         </ActionRow>
       </>
     );
@@ -634,11 +612,11 @@ function StageView({
     return (
       <>
         <Banner kind="error">
-          <strong>Write failed.</strong> {stage.message}
+          <strong>Couldn&rsquo;t save to the radio.</strong> {stage.message}
         </Banner>
         <ActionRow>
           <button className="secondary" onClick={onReset}>
-            Back to form
+            Back
           </button>
         </ActionRow>
       </>
@@ -653,15 +631,14 @@ function DiffTable({ changes }: { changes: ApplyResult["fieldChanges"] }) {
   return (
     <details open style={{ marginTop: 12 }}>
       <summary style={{ cursor: "pointer", fontSize: 13 }}>
-        {changes.length} field change(s)
+        {changes.length} change{changes.length === 1 ? "" : "s"}
       </summary>
       <table style={{ marginTop: 8, fontSize: 12, borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr style={{ color: "var(--muted)", textAlign: "left" }}>
-            <th style={{ padding: "2px 12px 2px 0" }}>Field</th>
-            <th style={{ padding: "2px 12px 2px 0" }}>Before</th>
-            <th style={{ padding: "2px 12px 2px 0" }}>After</th>
-            <th style={{ padding: "2px 12px 2px 0" }}>Address</th>
+            <th style={{ padding: "2px 12px 2px 0" }}>Setting</th>
+            <th style={{ padding: "2px 12px 2px 0" }}>Now</th>
+            <th style={{ padding: "2px 12px 2px 0" }}>New</th>
           </tr>
         </thead>
         <tbody>
@@ -673,9 +650,6 @@ function DiffTable({ changes }: { changes: ApplyResult["fieldChanges"] }) {
               </td>
               <td style={{ padding: "2px 12px 2px 0" }}>
                 <code>{c.after.display}</code>
-              </td>
-              <td style={{ padding: "2px 12px 2px 0", color: "var(--muted)" }}>
-                <code>0x{c.byteRange.start.toString(16).padStart(4, "0").toUpperCase()}</code>
               </td>
             </tr>
           ))}

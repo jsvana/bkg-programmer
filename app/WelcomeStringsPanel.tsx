@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "./SessionContext";
+import { TechDetails } from "./ui";
 
 // On K1+briand (and NR7Y, which is built on top), the firmware does NOT use
 // the V1-style logical addresses for the welcome region. Verified against
@@ -36,13 +37,17 @@ const DISPLAY_MODE_BYTE_INDEX = 7;
 // settings.h:30-37 — NB the order differs by enum branch (one has 6 values,
 // the other has 4). We surface all six; the firmware clamps anything >=6 to
 // VOLTAGE on load (settings.c:145).
+// Plain-language labels use the F4HWN interpretation of POWER_ON_DISPLAY_MODE
+// — this panel only shows for F4HWN-based profiles, so that's the meaning that
+// applies. Technical (dual-build) detail lives in the "Technical detail"
+// expander in the panel body.
 const DISPLAY_MODES: ReadonlyArray<{ value: number; label: string; hint: string }> = [
-  { value: 0, label: "FULL_SCREEN / ALL", hint: "Strings + voltage + version (F4HWN: ALL; non-F4HWN: FULL_SCREEN — same byte)" },
-  { value: 1, label: "SOUND / MESSAGE", hint: "F4HWN: SOUND (black screen, beep); non-F4HWN: MESSAGE (strings only)" },
-  { value: 2, label: "MESSAGE / VOLTAGE", hint: "F4HWN: MESSAGE; non-F4HWN: VOLTAGE" },
-  { value: 3, label: "VOLTAGE / NONE", hint: "F4HWN: VOLTAGE; non-F4HWN: NONE (black)" },
-  { value: 4, label: "(F4HWN-only)", hint: "Unused on stock-style builds" },
-  { value: 5, label: "NONE (F4HWN)", hint: "F4HWN-only: black screen" },
+  { value: 0, label: "Your text, plus voltage and version", hint: "Shows both lines of your text along with the firmware version and battery voltage." },
+  { value: 1, label: "Blank screen with a beep", hint: "No text — just a startup beep." },
+  { value: 2, label: "Your text only", hint: "Shows your two lines and nothing else." },
+  { value: 3, label: "Battery voltage (hides your text)", hint: "Replaces your text with the battery voltage on boot." },
+  { value: 4, label: "Logo image", hint: "Shows a custom logo image instead of text (only on firmware that supports it)." },
+  { value: 5, label: "Blank screen", hint: "Nothing shown on boot." },
 ];
 
 const STORAGE_KEY = "bkg-welcome-strings-state";
@@ -229,67 +234,55 @@ export function WelcomeStringsPanel() {
 
   return (
     <Section>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Welcome strings (F4HWN / NR7Y boot text)</h2>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Boot screen text</h2>
       <p style={{ color: "var(--muted)", marginTop: 4 }}>
-        F4HWN/NR7Y boot screen is text composed from two 16-byte ASCII strings
-        plus the firmware-baked version + edition strings. Set{" "}
-        <code>POWER_ON_DISPLAY_MODE</code> to <em>MESSAGE</em> (0x02) or{" "}
-        <em>ALL</em> (0x00) to make your text appear. Source: briand{" "}
-        <code>ui/welcome.c:278-281</code> + <code>settings.c:255,265</code>.
+        Set the two lines of text your radio shows when it powers on — your
+        callsign, a club name, whatever you like. Show your current text
+        first, edit it, then save. Pick <em>Your text only</em> or{" "}
+        <em>Your text, plus voltage and version</em> as the style so your text
+        actually appears.
       </p>
 
-      <div
-        style={{
-          marginTop: 12,
-          padding: 10,
-          border: "1px solid #2c7a4f",
-          background: "rgba(44, 122, 79, 0.10)",
-          borderRadius: 6,
-          fontSize: 13,
-        }}
-      >
-        <strong>Addresses corrected 2026-05-25</strong> after reading
-        briand&apos;s source. We write to{" "}
+      <TechDetails>
+        Text is written to physical settings addresses{" "}
         <code>0x{WELCOME0_ADDR.toString(16)}</code> /{" "}
-        <code>0x{WELCOME1_ADDR.toString(16)}</code> /{" "}
-        <code>0x{DISPLAY_MODE_BLOCK_ADDR.toString(16)}</code> — physical
-        addresses in the settings region, identity-mapped by{" "}
-        <code>eeprom_compat.c</code>. briand&apos;s <code>welcome.c</code>{" "}
-        bypasses <code>AddrTranslate</code> and reads these physical
-        addresses directly. Earlier attempts that wrote to{" "}
-        <code>0x0EB0</code>/<code>0x0EC0</code>/<code>0x0E90</code>{" "}
-        verified at the protocol level but landed in the channels region —
-        the firmware never read them.
-      </div>
+        <code>0x{WELCOME1_ADDR.toString(16)}</code>, and the boot-screen style
+        byte to <code>0x{DISPLAY_MODE_BLOCK_ADDR.toString(16)}</code> (byte 7),
+        identity-mapped by <code>eeprom_compat.c</code>. briand&apos;s{" "}
+        <code>welcome.c:278-281</code> + <code>settings.c:255,265</code> read
+        these physical addresses directly, bypassing <code>AddrTranslate</code>.
+        The style names map to <code>POWER_ON_DISPLAY_MODE</code>; on non-F4HWN
+        builds the same byte values mean different things.
+      </TechDetails>
 
       <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button onClick={() => runStep(readCurrent)} disabled={busy}>
-          Read current values
+          Show current text
         </button>
         <button onClick={() => runStep(writeAll)} disabled={!canWrite}>
-          Write + verify
+          Save
         </button>
         <button
           className="secondary"
           onClick={() => runStep(reboot)}
           disabled={busy}
         >
-          Reboot radio
+          Restart radio
         </button>
         <button
           onClick={() => runStep(restoreSnapshot)}
           disabled={busy || !snapshot}
         >
-          Restore snapshot
+          Undo (put the old text back)
         </button>
         <button className="secondary" onClick={clear} disabled={busy}>
-          Clear snapshot
+          Clear backup
         </button>
       </div>
 
       <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
         <label style={{ fontSize: 13 }}>
-          Welcome line 1 (max {WELCOME_LEN} ASCII chars):
+          Line 1 (up to {WELCOME_LEN} characters):
           <input
             type="text"
             value={welcome0}
@@ -301,7 +294,7 @@ export function WelcomeStringsPanel() {
           />
         </label>
         <label style={{ fontSize: 13 }}>
-          Welcome line 2 (max {WELCOME_LEN} ASCII chars):
+          Line 2 (up to {WELCOME_LEN} characters):
           <input
             type="text"
             value={welcome1}
@@ -313,7 +306,7 @@ export function WelcomeStringsPanel() {
           />
         </label>
         <label style={{ fontSize: 13 }}>
-          POWER_ON_DISPLAY_MODE byte (Data[7] of 0x0E90):
+          Boot screen style:
           <select
             value={displayMode}
             onChange={(e) => setDisplayMode(Number.parseInt(e.target.value, 10))}
@@ -322,7 +315,7 @@ export function WelcomeStringsPanel() {
           >
             {DISPLAY_MODES.map((m) => (
               <option key={m.value} value={m.value}>
-                0x{m.value.toString(16)} — {m.label}
+                {m.label}
               </option>
             ))}
           </select>
@@ -334,9 +327,9 @@ export function WelcomeStringsPanel() {
 
       {snapshot ? (
         <p style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
-          Snapshot from {snapshot.capturedAt} (firmware{" "}
-          <code>{snapshot.firmwareVersion}</code>). Restore is available even
-          across page reloads.
+          Backup of the old text saved{" "}
+          {new Date(snapshot.capturedAt).toLocaleString()}. You can undo even
+          after closing and reopening this page.
         </p>
       ) : null}
 
@@ -355,20 +348,22 @@ export function WelcomeStringsPanel() {
       ) : null}
 
       {log.length > 0 ? (
-        <pre
-          style={{
-            marginTop: 16,
-            padding: 10,
-            background: "var(--border)",
-            borderRadius: 6,
-            fontSize: 12,
-            maxHeight: 240,
-            overflow: "auto",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {log.join("\n")}
-        </pre>
+        <TechDetails summary="Step-by-step log">
+          <pre
+            style={{
+              marginTop: 4,
+              padding: 10,
+              background: "var(--border)",
+              borderRadius: 6,
+              fontSize: 12,
+              maxHeight: 240,
+              overflow: "auto",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {log.join("\n")}
+          </pre>
+        </TechDetails>
       ) : null}
     </Section>
   );
