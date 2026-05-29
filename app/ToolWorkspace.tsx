@@ -15,6 +15,7 @@ import { SplashTestPanel } from "./SplashTestPanel";
 import { WelcomeStringsPanel } from "./WelcomeStringsPanel";
 import { SplashFlasherPanel } from "./SplashFlasherPanel";
 import { useSession } from "./SessionContext";
+import type { ConnState } from "./SessionContext";
 import { StepGroup } from "./ui";
 
 import type { UtilityId } from "./types";
@@ -137,8 +138,13 @@ function ToolContent({ tool }: { tool: ToolId | UtilityId }) {
     case "flash":
       return <FlashTool />;
 
-    case "program":
-      if (!connected) return <NotConnectedHint />;
+    case "program": {
+      if (!connected)
+        return (
+          <ConnectPrompt lead="Connect your radio when you're ready to make changes — you can set everything up after." />
+        );
+      const guard = firmwareGuard(state, "program");
+      if (guard) return guard;
       return (
         <>
           <StepGroup
@@ -162,9 +168,15 @@ function ToolContent({ tool }: { tool: ToolId | UtilityId }) {
           </StepGroup>
         </>
       );
+    }
 
-    case "splash":
-      if (!connected) return <NotConnectedHint />;
+    case "splash": {
+      if (!connected)
+        return (
+          <ConnectPrompt lead="Connect your radio when you're ready to change the boot screen." />
+        );
+      const guard = firmwareGuard(state, "splash");
+      if (guard) return guard;
       return (
         <>
           <p className="tool-view-blurb" style={{ marginBottom: 0 }}>
@@ -176,13 +188,18 @@ function ToolContent({ tool }: { tool: ToolId | UtilityId }) {
           <SplashTestPanel />
         </>
       );
+    }
 
     case "self-test":
-      if (!connected) return <NotConnectedHint />;
+      if (!connected)
+        return <ConnectPrompt lead="Connect your radio to run the check." />;
       return <SelfTestPanel />;
 
     case "identity":
-      if (!connected) return <NotConnectedHint />;
+      if (!connected)
+        return (
+          <ConnectPrompt lead="Connect your radio so we can compare what it reports against the radio in your hand." />
+        );
       return <RadioIdentityHelp />;
 
     case "connection-details":
@@ -190,11 +207,84 @@ function ToolContent({ tool }: { tool: ToolId | UtilityId }) {
   }
 }
 
-function NotConnectedHint() {
+/**
+ * Firmware-compatibility gate, enforced here rather than at the hub so the
+ * tools stay openable without a connection. Returns a callout to render in
+ * place of the tool when the connected radio's firmware can't safely accept
+ * changes; null when it can (or when not connected — that case is handled
+ * by the caller before reaching here).
+ */
+function firmwareGuard(
+  state: ConnState,
+  tool: "program" | "splash",
+): ReactNode {
+  if (state.kind !== "connected") return null;
+  const fw = state.result.firmware;
+
+  if (fw.kind === "matched" && fw.entry.family === "stock") {
+    return (
+      <div className="callout">
+        {tool === "program"
+          ? "Your radio's factory firmware won't accept changes. Install custom firmware first (the Install firmware tool walks you through it)."
+          : "Factory firmware won't let the boot screen be changed. Install custom firmware first (the Install firmware tool walks you through it)."}
+      </div>
+    );
+  }
+
+  if (fw.kind !== "matched") {
+    return (
+      <div className="callout">
+        We don&rsquo;t recognize this firmware, so we won&rsquo;t risk changing
+        anything. Check the connection details to see what the radio reported.
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Actionable not-connected state. Instead of pointing at the rail, this lets
+ * the user connect right where they are, just before they make changes —
+ * connection is no longer a gate to opening the tool.
+ */
+function ConnectPrompt({ lead }: { lead: string }) {
+  const { state, connect } = useSession();
+
+  if (state.kind === "unsupported") {
+    return (
+      <div className="callout">
+        Connecting to a radio needs Chrome or Edge on a desktop computer, over
+        a secure (https) page. Open this page there to continue.
+      </div>
+    );
+  }
+
+  const busy = state.kind === "connecting";
   return (
     <div className="callout">
-      No radio connected yet. Use the <strong>connect radio</strong> button in
-      the bar above to connect one.
+      <p style={{ marginTop: 0 }}>{lead}</p>
+      <p>
+        Put the radio in programming mode — hold the lower side button
+        (Side&nbsp;2) while turning it on — plug in the programming cable, then
+        connect.
+      </p>
+      <button onClick={connect} disabled={busy}>
+        {busy ? "connecting…" : "connect radio"}
+      </button>
+      {state.kind === "error" ? (
+        <p
+          style={{
+            marginTop: "var(--space-3)",
+            color: "var(--err)",
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 13,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {state.message}
+        </p>
+      ) : null}
     </div>
   );
 }

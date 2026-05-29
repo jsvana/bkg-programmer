@@ -45,9 +45,13 @@ export function Hub({
       ? { chip: { label: "already installed", tone: "ok" } }
       : { chip: { label: "uses UVTools2", tone: "warn" } };
 
+  // Connection is NOT a gate. The user can open these tools while
+  // disconnected and connect from inside, just before they make changes.
+  // The only hard gate is firmware compatibility, and that can only be
+  // judged once a radio is actually connected.
   const programStatus: Status =
     !connected
-      ? { chip: { label: "connect first", tone: "warn" }, disabled: true, disabledReason: "Connect a radio to begin." }
+      ? { chip: { label: "connect when ready" } }
       : isStock
         ? { chip: { label: "needs custom firmware", tone: "warn" }, disabled: true, disabledReason: "Your radio's factory firmware won't accept changes. Install custom firmware first." }
         : fwKind !== "matched"
@@ -56,7 +60,7 @@ export function Hub({
 
   const splashStatus: Status =
     !connected
-      ? { chip: { label: "connect first", tone: "warn" }, disabled: true, disabledReason: "Connect a radio to begin." }
+      ? { chip: { label: "connect when ready" } }
       : isStock
         ? { chip: { label: "needs custom firmware", tone: "warn" }, disabled: true, disabledReason: "Factory firmware won't let the boot screen be changed. Install custom firmware first." }
         : fwKind !== "matched"
@@ -68,15 +72,16 @@ export function Hub({
 
   return (
     <>
+      <PowerOnModes />
+
       <header className="workspace-intro">
         <h1>What do you want to do?</h1>
         <p>
-          Pick a tool below. Your connection stays shown in the bar above,
-          and the screen focuses on just the tool you choose.
+          Pick a tool below. You don&rsquo;t have to connect a radio first —
+          each tool lets you connect right before it makes changes. Your
+          connection stays shown in the bar above.
         </p>
       </header>
-
-      <PowerOnModes />
 
       <div className="hub" role="list">
         <Tile
