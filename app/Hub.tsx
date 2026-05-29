@@ -76,6 +76,8 @@ export function Hub({
         </p>
       </header>
 
+      <PowerOnModes />
+
       <div className="hub" role="list">
         <Tile
           num="01"
@@ -111,6 +113,64 @@ export function Hub({
         connected={connected}
       />
     </>
+  );
+}
+
+/**
+ * The radio has three distinct power-on modes selected by which button (if
+ * any) is held while turning it on. This is foundational: the Program and
+ * Splash tools only work when the radio booted into programmer mode, and
+ * that mode only exists on the forked BKG firmware. Spelling it out here
+ * saves the "why does nothing happen when I connect?" support loop.
+ */
+function PowerOnModes() {
+  return (
+    <section className="modes" aria-labelledby="modes-heading">
+      <span className="label-caps" id="modes-heading">
+        Power-on modes
+      </span>
+      <p className="modes-lead">
+        The radio boots into a different mode depending on which button you
+        hold while turning it on. <strong>This tool can only program the
+        radio when it&rsquo;s in programmer mode.</strong>
+      </p>
+      <ul className="mode-list">
+        <li className="mode">
+          <span className="mode-hold">No button</span>
+          <span className="mode-body">
+            <span className="mode-name">Standard radio</span>
+            <span className="mode-desc">
+              Power on normally. The radio operates as usual — transmit,
+              receive, menus. Not programmable over serial in this mode.
+            </span>
+          </span>
+        </li>
+        <li className="mode">
+          <span className="mode-hold">Hold PTT</span>
+          <span className="mode-body">
+            <span className="mode-name">DFU mode</span>
+            <span className="mode-desc">
+              Hold the PTT key while powering on. Used to flash firmware
+              (e.g. with UVTools2). Not used by this tool directly.
+            </span>
+          </span>
+        </li>
+        <li className="mode">
+          <span className="mode-hold">Hold bottom-left</span>
+          <span className="mode-body">
+            <span className="mode-name">
+              Programmer mode <span className="chip required">required to program</span>
+            </span>
+            <span className="mode-desc">
+              Hold the bottom-left side button while powering on. The radio
+              waits for serial commands so this tool can read and write the
+              EEPROM. <strong>Only available on the forked BKG firmware</strong> —
+              flash it first if you don&rsquo;t have it.
+            </span>
+          </span>
+        </li>
+      </ul>
+    </section>
   );
 }
 
