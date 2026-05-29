@@ -219,7 +219,7 @@ function FlashTool() {
                 <div className="firmware-download-head">
                   <strong>NR7Y CW (BKG build) — UV-K1</strong>
                   <span className="firmware-download-meta">
-                    v1.0.0 · 88 KB
+                    v1.1.0 · 87 KB
                   </span>
                 </div>
                 <p className="firmware-download-blurb">
@@ -239,17 +239,28 @@ function FlashTool() {
                   UV-K5-V3 (firmware identifies as ambiguous —
                   Quick CW Setup is gated to UV-K1 only for now).
                 </p>
+                <p className="firmware-download-blurb">
+                  <strong>v1.1.0 changes:</strong> CAT control over
+                  UART/VCP with USB status indicator; UART-safe escape
+                  hatches for the CW keyer PA10 conflict.{" "}
+                  <strong>Breaking:</strong> default CW paddle mapping
+                  is now TIP=dit, RING=dah (industry standard). If you
+                  had previously selected a &ldquo;Reversed&rdquo;
+                  key-input mode to compensate, switch to the
+                  non-reversed equivalent after flashing (and vice
+                  versa).
+                </p>
                 <a
-                  href="/firmware/nr7y.cw-bkg-logo.v1.0.0.bin"
+                  href="/firmware/nr7y.cw-bkg-logo.v1.1.0.bin"
                   download
                   className="firmware-download-btn"
                 >
-                  Download nr7y.cw-bkg-logo.v1.0.0.bin
+                  Download nr7y.cw-bkg-logo.v1.1.0.bin
                 </a>
                 <p className="firmware-download-hash">
                   SHA256:{" "}
                   <code>
-                    01c570ec5150f96c7f8f661e9c4e22a239e8819112bec0f927b0cae3429e3582
+                    011fd156de29df6066e7388ee49b2b82a916fc071b86cb1f05f8048a712fe51b
                   </code>
                 </p>
               </div>
