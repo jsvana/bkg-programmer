@@ -156,15 +156,16 @@ function PowerOnModes() {
           </span>
         </li>
         <li className="mode">
-          <span className="mode-hold">Hold bottom-left</span>
+          <span className="mode-hold">Hold Side&nbsp;2</span>
           <span className="mode-body">
             <span className="mode-name">
               Programmer mode <span className="chip required">required to program</span>
             </span>
             <span className="mode-desc">
-              Hold the bottom-left side button while powering on. The radio
-              waits for serial commands so this tool can read and write the
-              EEPROM. <strong>Only available on the forked BKG firmware</strong> —
+              Hold the bottom-left side button (Side&nbsp;2) while powering on.
+              The radio waits for serial commands so this tool can read and
+              write the EEPROM.{" "}
+              <strong>Only available on the forked BKG firmware</strong> —
               flash it first if you don&rsquo;t have it.
             </span>
           </span>
