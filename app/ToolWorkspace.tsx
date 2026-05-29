@@ -9,6 +9,7 @@ import { SelfTestPanel } from "./SelfTestPanel";
 import { WritePanel } from "./WritePanel";
 import { ConfigPanel } from "./ConfigPanel";
 import { CwQuickSetupPanel } from "./CwQuickSetupPanel";
+import { ChannelProgramPanel } from "./ChannelProgramPanel";
 import { BackupPanel } from "./BackupPanel";
 import { SplashTestPanel } from "./SplashTestPanel";
 import { WelcomeStringsPanel } from "./WelcomeStringsPanel";
@@ -142,6 +143,7 @@ function ToolContent({ tool }: { tool: ToolId | UtilityId }) {
       return (
         <>
           <BackupPanel />
+          <ChannelProgramPanel />
           <CwQuickSetupPanel />
           <WritePanel />
           <ConfigPanel />
