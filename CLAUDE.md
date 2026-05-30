@@ -85,6 +85,45 @@ users will follow.
 Source: empirical (no official docs). UVTools2 and briand/armel READMEs
 all say "put radio in DFU mode" without specifying the K1 combo.
 
+### NR7Y CW: TRS jack steals PA10 from UART; hold Side2 at boot to recover
+
+USART1_RX (host UART RX) and the CW keyer's "port ground" drive line
+both live on MCU pin PA10. Selecting any `CW_KEY_INPUT` mode with the
+PORT_GROUND flag (5 of the 8 menu options — anything that expects a
+real paddle on the TRS jack) reconfigures PA10 from USART1_RX (AF1) to
+GPIO output-low. UART RX dies, the radio stops accepting protocol
+commands, and the keyer mode is persisted in EEPROM — so on next boot
+it re-grabs PA10 immediately. Pre-NR7Y-v1.1.0 builds have no escape
+hatch; recovery requires DFU + reflash (PTT-at-power-on on K1, see
+above).
+
+NR7Y v1.1.0 adds two opt-in escape hatches (briand fork commit
+`f2dca450`, "Add UART-safe escape hatches for CW keyer PA10
+conflict", 2026-05-26); both are dormant unless a port-ground mode is
+selected:
+
+1. **5 s boot grace window.** `CW_KeyerInit()` refuses to call
+   `CW_ConfigurePortGround(true)` for the first 5 s after boot
+   (`App/app/cwkeyer.c`). `bkg-programmer` can complete a hello + write
+   a non-port-ground keyer mode inside that window. Side effect: paddle
+   is inert for the first 5 s of every cold boot when a port-ground
+   mode is selected.
+
+2. **Hold Side2 (bottom-left side button) at power-on.** `main.c`
+   snapshots `KEYBOARD_Poll()` before the release-wait loop and, if
+   SIDE2 was held at power-on AND PTT was NOT, forces
+   `CW_KEY_INPUT = HANDKEY` for the session only. No EEPROM write —
+   clears on next power cycle, so the user's chosen keyer mode is
+   preserved. Don't combine with PTT: PTT+SIDE2 still routes to
+   `BOOT_MODE_AIRCOPY` upstream.
+
+Recovery workflow for a stuck user: power-cycle while holding Side2,
+connect via `bkg-programmer`, change the keyer mode to HANDKEY (or any
+non-port-ground mode), save, then power-cycle normally.
+
+Source: `App/app/cwkeyer.c`, `App/main.c` in briand fork commit
+`f2dca450`.
+
 ### K1+briand: welcome strings + display-mode live at PHYSICAL addresses, not V1-style logical ones
 
 The naive port of F4HWN's V1 welcome code uses logical addresses
